@@ -1,4 +1,4 @@
-ï»¿# FPGA RTL Guidelines
+# FPGA RTL Guidelines
 
 > Project-level RTL conventions captured from `my_cnnV4` architecture work.
 
@@ -114,7 +114,7 @@ pingpong_img_buf u_buf(
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// V4 ç¼“å†²æ¨¡å—å†…éƒ¨è‡ªå·±æ¨ä¸‹ä¸€ä¸ªå†™åœ°å€
+// V4 »º³åÄ£¿éÄÚ²¿×Ô¼ºÍÆÏÂÒ»¸öĞ´µØÖ·
 reg [9:0] wr_addr;
 always @(posedge clk) begin
     if(wr_fire) begin
@@ -126,7 +126,7 @@ end
 
 #### Correct
 ```verilog
-// V4 ç”±å¤–éƒ¨åœ°å€ç®¡ç†å™¨æ˜¾å¼ç»™æ‹¼æ¥äºŒç»´åœ°å€
+// V4 ÓÉÍâ²¿µØÖ·¹ÜÀíÆ÷ÏÔÊ½¸øÆ´½Ó¶şÎ¬µØÖ·
 wire [4:0] wr_row;
 wire [4:0] wr_col;
 wire [9:0] wr_addr_1d;
@@ -178,14 +178,14 @@ end
 ```verilog
 module example_mod
 (
-    input  clk,          // æ—¶é’Ÿ
-    input  rstn,         // ä½æœ‰æ•ˆå¤ä½
-    input  in_valid,     // è¾“å…¥æœ‰æ•ˆ
-    input  [7:0] in_data,// è¾“å…¥æ•°æ®
+    input  clk,          // Ê±ÖÓ
+    input  rstn,         // µÍÓĞĞ§¸´Î»
+    input  in_valid,     // ÊäÈëÓĞĞ§
+    input  [7:0] in_data,// ÊäÈëÊı¾İ
 
-    output in_ready,     // è¾“å…¥å‡†å¤‡å¥½
-    output out_valid,    // è¾“å‡ºæœ‰æ•ˆ
-    output [7:0] out_data// è¾“å‡ºæ•°æ®
+    output in_ready,     // ÊäÈë×¼±¸ºÃ
+    output out_valid,    // Êä³öÓĞĞ§
+    output [7:0] out_data// Êä³öÊı¾İ
 );
 ```
 
@@ -253,7 +253,7 @@ module example_mod
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// æ¯æ¥ä¸€ä¸ªçª—å£å°±åˆ‡æ¢ä¸€æ¬¡bank
+// Ã¿À´Ò»¸ö´°¿Ú¾ÍÇĞ»»Ò»´Îbank
 always @(posedge clk) begin
     if(window_done) begin
         bank_sel <= ~bank_sel;
@@ -263,9 +263,9 @@ end
 
 #### Correct
 ```verilog
-// åªæœ‰å®Œæ•´ç‰¹å¾å›¾äº‹åŠ¡ç»“æŸåï¼Œbankè§’è‰²æ‰å…è®¸åˆ‡æ¢
+// Ö»ÓĞÍêÕûÌØÕ÷Í¼ÊÂÎñ½áÊøºó£¬bank½ÇÉ«²ÅÔÊĞíÇĞ»»
 assign wr_frame_done = wr_fire && wr_last;
-// rd_done ç”±ä¸‹ä¸€çº§åœ¨è¯»å®Œæ•´å¸§/å®Œæ•´ç‰¹å¾å›¾åæ˜¾å¼ç»™å‡º
+// rd_done ÓÉÏÂÒ»¼¶ÔÚ¶ÁÍêÕûÖ¡/ÍêÕûÌØÕ÷Í¼ºóÏÔÊ½¸ø³ö
 ```
 
 ---
@@ -316,7 +316,7 @@ assign wr_frame_done = wr_fire && wr_last;
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// å·ç§¯æ ¸å†…éƒ¨è‡ªå·±å»éå†å›¾åƒç¼“å­˜åœ°å€
+// ¾í»ıºËÄÚ²¿×Ô¼ºÈ¥±éÀúÍ¼Ïñ»º´æµØÖ·
 always @(posedge clk) begin
     if(start_conv) begin
         rd_addr2d <= rd_addr2d + 1'b1;
@@ -326,7 +326,7 @@ end
 
 #### Correct
 ```verilog
-// å·ç§¯æ ¸åªåƒä¸Šæ¸¸æ•´ç†å¥½çš„åƒç´ æµ
+// ¾í»ıºËÖ»³ÔÉÏÓÎÕûÀíºÃµÄÏñËØÁ÷
 assign in_fire = in_valid && in_ready;
 
 always @(posedge clk) begin
@@ -440,7 +440,7 @@ assign wr_addr_1d = (wr_row * IMG_W) + wr_col;
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// åªåšæ•°æ®å¯¹é½, ä¸å¸¦RAM
+// Ö»×öÊı¾İ¶ÔÆë, ²»´øRAM
 assign wr_addr2d = addr2d;
 ```
 
@@ -506,7 +506,7 @@ end
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// å·ç§¯æ ¸å†…éƒ¨è‡ªå·±æ§åˆ¶ BRAM åœ°å€
+// ¾í»ıºËÄÚ²¿×Ô¼º¿ØÖÆ BRAM µØÖ·
 always @(posedge clk) begin
     if(start_conv) begin
         rd_addr <= rd_addr + 1'b1;
@@ -516,7 +516,7 @@ end
 
 #### Correct
 ```verilog
-// å¤–éƒ¨æ¨¡å—é€å…¥åƒç´ æµ, å·ç§¯æ ¸åªåšä¹˜åŠ å’Œæ¡æ‰‹
+// Íâ²¿Ä£¿éËÍÈëÏñËØÁ÷, ¾í»ıºËÖ»×ö³Ë¼ÓºÍÎÕÊÖ
 assign in_fire = in_valid && in_ready;
 assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 ```
@@ -597,7 +597,7 @@ assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// TB å†…éƒ¨è‡ªå·±å†ç®—ä¸€éé»„é‡‘å€¼
+// TB ÄÚ²¿×Ô¼ºÔÙËãÒ»±é»Æ½ğÖµ
 for(i = 0; i < WIN_SIZE; i = i + 1) begin
     exp_sum = exp_sum + ($signed({1'b0, window_pix[i]}) * weight_mem[i]);
 end
@@ -605,7 +605,7 @@ end
 
 #### Correct
 ```verilog
-// TB ç›´æ¥è¯»å– PC ä¾§ç”Ÿæˆçš„é»„é‡‘ç»“æœ
+// TB Ö±½Ó¶ÁÈ¡ PC ²àÉú³ÉµÄ»Æ½ğ½á¹û
 fp_result = $fopen(RESULT_FILE, "r");
 rc = $fscanf(fp_result, "%d", exp_sum);
 ```
@@ -722,7 +722,7 @@ win_addr_mgr #(
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// æŠŠè¾“å‡ºé€šé“æ•°ä¹Ÿè€¦åˆè¿›çª—å£åœ°å€æ¨¡å—
+// °ÑÊä³öÍ¨µÀÊıÒ²ñîºÏ½ø´°¿ÚµØÖ·Ä£¿é
 for(i = 0; i < 6; i = i + 1) begin
     addr2d_ch[i] <= addr2d_ch[i] + 1'b1;
 end
@@ -730,7 +730,7 @@ end
 
 #### Correct
 ```verilog
-// åªç”Ÿæˆä¸€å¥—ç©ºé—´åœ°å€, ç”±ä¸Šå±‚å¹¿æ’­åˆ°å¤šä¸ªå·ç§¯æ ¸æˆ–å¤šä¸ªç¼“å­˜
+// Ö»Éú³ÉÒ»Ì×¿Õ¼äµØÖ·, ÓÉÉÏ²ã¹ã²¥µ½¶à¸ö¾í»ıºË»ò¶à¸ö»º´æ
 assign img_rd_addr2d = win_addr2d;
 assign lane0_addr2d = win_addr2d;
 assign lane1_addr2d = win_addr2d;
@@ -1011,13 +1011,13 @@ l1_addr_mgr u_l1_addr_mgr(
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// æŸä¸€è·¯å…ˆå†™æˆåŠŸå°±æ¨è¿›ä¸‹ä¸€è¾“å‡ºç‚¹
+// Ä³Ò»Â·ÏÈĞ´³É¹¦¾ÍÍÆ½øÏÂÒ»Êä³öµã
 assign l1_out_fire = lane_out_valid[0] && lane_ofmap_wr_ready[0];
 ```
 
 #### Correct
 ```verilog
-// 6 è·¯ç»“æœå¿…é¡»åŒæ‹æäº¤å, åœ°å€ç®¡ç†å™¨æ‰æ¨è¿›
+// 6 Â·½á¹û±ØĞëÍ¬ÅÄÌá½»ºó, µØÖ·¹ÜÀíÆ÷²ÅÍÆ½ø
 assign all_lane_commit_fire = out_ready
                            && l1_wr_addr_valid
                            && (&lane_out_valid)
@@ -1028,7 +1028,7 @@ assign all_lane_commit_fire = out_ready
 
 ## Convention: First-Layer Sequential Weight Stream Distributor
 
-**What**: For first-layer `1 -> 6` bring-up, the external controller may send one continuous serialized weight stream, and a dedicated distributor module splits it into `lane + last` control for the existing `l1_top`.
+**What**: For first-layer `1 -> 6` bring-up, the external controller may send one continuous serialized weight stream, and a dedicated distributor module splits it into `lane + last` control for the existing `l1_core`.
 
 **Why**:
 - It removes manual per-lane drive logic from the top-level TB and future control path.
@@ -1096,10 +1096,10 @@ assign lane_cfg_weight_last = lane_cfg_weight_valid && (cur_weight_idx == WIN_SI
   - `cfg_weight_ready`, `cfg_weight_done`, `cfg_last_err`
 - Internal bridge:
   - distributor output `lane_cfg_weight_*`
-  - existing `l1_top` input `cfg_weight_* + cfg_weight_lane`
+  - existing `l1_core` input `cfg_weight_* + cfg_weight_lane`
 
 ### 3. Contracts
-- `l1_top_w` owns the adaptation from continuous stream weights to the existing `l1_top` per-lane weight-load contract.
+- `l1_top_w` owns the adaptation from continuous stream weights to the existing `l1_core` per-lane weight-load contract.
 - `l1_top` remains the compute/integration core and should not absorb the stream-distribution logic.
 - `cfg_weight_done` at wrapper level means the full `6 * 25` weight stream has been accepted.
 - `weight_loaded` at wrapper level still means all six `conv_l1` lanes report loaded.
@@ -1125,17 +1125,269 @@ assign lane_cfg_weight_last = lane_cfg_weight_valid && (cur_weight_idx == WIN_SI
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// å¤–éƒ¨è¿˜è¦æ‰‹å†™ lane ç¼–å·, åŒ…è£…å±‚å½¢åŒè™šè®¾
+// Íâ²¿»¹ÒªÊÖĞ´ lane ±àºÅ, °ü×°²ãĞÎÍ¬ĞéÉè
 assign top_cfg_weight_lane = ext_cfg_weight_lane;
 ```
 
 #### Correct
 ```verilog
-// åŒ…è£…å±‚å†…éƒ¨è‡ªåŠ¨æŠŠä¸²è¡Œæƒé‡æµæ‹†ç»™ 6 è·¯å·ç§¯æ ¸
+// °ü×°²ãÄÚ²¿×Ô¶¯°Ñ´®ĞĞÈ¨ÖØÁ÷²ğ¸ø 6 Â·¾í»ıºË
 l1_wgt_dist u_l1_wgt_dist (
     .cfg_weight_valid(cfg_weight_valid),
     .lane_cfg_weight_lane(dist_cfg_weight_lane)
 );
+```
+
+---
+
+## Design Decision: Use One Global Weight Distributor Across Layers
+
+**Context**: The first-layer weight distributor is already split out, and later layers will also need ordered power-on weight preload. The user wants one unified numbering rule instead of different ad-hoc lane selectors per layer.
+
+**Decision**: Future weight preload should be described as one global weight-distribution problem, not only as a first-layer helper. The global target identifier is a packed 2D logical address:
+- `weight_dst2d = {layer_id, kernel_id}`
+- first layer example: `(0,0)` to `(0,5)`
+- second layer example: `(1,0)` to `(1,11)`
+
+**Why**:
+- It gives one stable addressing rule across first layer and later layers.
+- It keeps layer index and output-kernel index explicit at the control boundary.
+- It avoids redesigning the preload protocol again when moving from `6` output channels to `12` output channels.
+
+**Extensibility**:
+- Later, the same global distributor can drive first-layer `6` kernels, second-layer `12` kernels, and any later fully connected or convolution stage that still uses startup preload.
+- The packed 2D destination ID is a logical destination only; local modules may still translate it into their own lane-select or bank-select format internally.
+
+---
+
+## Convention: Global Weight Destination Uses Packed 2D Logical Address
+
+**What**: Weight preload control should use a packed 2D logical destination ID instead of a layer-local single-lane selector.
+
+**Why**:
+- The design already uses packed 2D addressing heavily for image and feature-map ownership.
+- Reusing the same idea for weight routing keeps the control style consistent.
+- It makes later multi-layer weight preload easier to reason about.
+
+### Required Interface Contract
+
+- Upstream weight stream:
+  - `cfg_weight_valid`
+  - `cfg_weight_data`
+  - `cfg_weight_last`
+- Global logical destination:
+  - `weight_dst2d = {layer_id, kernel_id}`
+- Recommended field meaning:
+  - `layer_id`: identifies which CNN layer owns the weight
+  - `kernel_id`: identifies which output kernel inside that layer owns the weight
+
+### Required Behavior
+
+- The first-layer logical kernel IDs are:
+  - `(0,0)` `(0,1)` `(0,2)` `(0,3)` `(0,4)` `(0,5)`
+- The second-layer logical kernel IDs are:
+  - `(1,0)` through `(1,11)`
+- The global distributor must preserve this logical ID order when performing startup preload.
+- Local layer wrappers may internally convert:
+  - `(0, kernel_id)` -> first-layer lane select
+  - `(1, kernel_id)` -> second-layer lane select
+- The logical 2D destination does not replace per-layer weight-group sizing. Each layer still owns its own `Cin * K * K` or other local weight-count rule.
+
+### Good Pattern
+
+```verilog
+// È«¾ÖÈ¨ÖØÄ¿±ê²ÉÓÃÂß¼­¶şÎ¬±àºÅ
+// µÚÒ»²ã: (0,0) ~ (0,5)
+// µÚ¶ş²ã: (1,0) ~ (1,11)
+assign weight_dst2d = {layer_id, kernel_id};
+```
+
+### Wrong Pattern
+
+- Do not define one unrelated lane-numbering scheme for each layer without a shared top-level meaning.
+- Do not overload first-layer-only `cfg_weight_lane` as the permanent project-wide weight-routing contract.
+- Do not make compute kernels infer their own global layer identity during preload.
+
+### Tests Required
+
+- When a global distributor RTL is implemented, TB must verify:
+  - first-layer IDs are emitted in `(0,0)` to `(0,5)` order
+  - second-layer IDs are emitted in `(1,0)` to `(1,11)` order
+  - the destination ID remains stable while downstream `ready=0`
+
+---
+
+## Convention: Power-On Weight Preload Completes Before Compute Starts
+
+**What**: At current V4 architecture stage, weight distribution is a startup transaction. All required layer weights for the current run are loaded first, then normal image / feature-map compute is allowed to start.
+
+**Why**:
+- This matches the current `conv_l1` contract: compute waits for weight-ready state.
+- It reduces overlap complexity during bring-up.
+- It keeps the first full system easier to debug before introducing runtime weight switching.
+
+### Required Behavior
+
+- On power-up or reset release, the system may enter a dedicated preload phase.
+- During preload phase:
+  - global weight stream is routed to the target layer/kernel destinations
+  - normal convolution scan must not start
+  - later layer address/compute flow may remain idle
+- After all required destinations report loaded, the system may enter normal compute phase.
+- For the current first-layer wrapper:
+  - `cfg_weight_done` means the external preload stream finished
+  - `weight_loaded` means all local first-layer convolution lanes report loaded
+
+### Good Pattern
+
+```verilog
+assign scan_ready = img_frame_valid
+                 && weight_loaded
+                 && !scan_busy;
+```
+
+### Wrong Pattern
+
+- Do not start image-window scan before the target layer weights are fully loaded.
+- Do not interleave normal window compute with unfinished startup preload in the first bring-up baseline.
+- Do not treat `cfg_weight_done` alone as global compute-enable unless the corresponding per-layer loaded flags are also complete.
+
+### Tests Required
+
+- Current layer-level TBs must continue to verify compute cannot start before `weight_loaded=1`.
+- When global preload control is implemented, integration TB must verify:
+  - preload completes first
+  - then scan/compute starts
+  - no output feature-map write occurs before preload completion
+
+---
+
+## Scenario: Future Global Multi-Layer Weight Preload
+
+### 1. Scope / Trigger
+- Trigger: the architecture is expanding from a first-layer-only distributor to a project-wide startup weight preload path that must cover multiple CNN layers.
+
+### 2. Signatures
+- Global stream side:
+  - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`, `cfg_weight_ready`
+- Global destination side:
+  - `weight_dst2d = {layer_id, kernel_id}`
+- Layer-local loaded status:
+  - per-layer `weight_loaded`
+  - optional per-layer `cfg_weight_done`
+
+### 3. Contracts
+- The global distributor owns the logical routing order across layers.
+- Each layer wrapper owns translation from `weight_dst2d` to local lane/kernel select.
+- Startup compute enable must be gated by the completion of the preload phase.
+- First layer and second layer must share the same destination-ID meaning, even if their local kernel counts differ.
+
+### 4. Validation & Error Matrix
+- first layer uses one numbering convention and second layer uses another unrelated convention -> cross-layer routing ambiguity
+- preload stream ends before all required `(layer_id, kernel_id)` targets are loaded -> incomplete startup state
+- compute starts before corresponding layer `weight_loaded=1` -> undefined convolution result
+- a local wrapper ignores `layer_id` and accepts weights for the wrong layer -> layer ownership violation
+
+### 5. Good/Base/Bad Cases
+- Good: startup first routes `(0,0)~(0,5)`, then `(1,0)~(1,11)`, and only after all targets are loaded does the system start feature-map compute.
+- Base: first implementation may still instantiate a first-layer-only wrapper, but its interface and spec should already align with future global `weight_dst2d` meaning.
+- Bad: later add second-layer preload by inventing a separate incompatible control bus unrelated to first-layer numbering.
+
+### 6. Tests Required
+- Future global distributor TB must check destination traversal across multiple layers.
+- Future system TB must check that no layer begins normal compute before preload completion.
+- At minimum one integration assertion point must confirm:
+  - `compute_start` implies all required layer-loaded flags are high
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// µÚÒ»²ãºÍµÚ¶ş²ã¸÷×Ô¶¨ÒåÎŞ¹Ø±àºÅ, ¶¥²ãÎŞ·¨Í³Ò»µ÷¶È
+assign l1_lane_id = ext_lane_id;
+assign l2_kernel_id = ext_kernel_id_other_rule;
+```
+
+#### Correct
+```verilog
+// ¶¥²ãÍ³Ò»Ê¹ÓÃÂß¼­¶şÎ¬Ä¿±ê±àºÅ
+assign weight_dst2d = {layer_id, kernel_id};
+// ¸÷²ã°ü×°Ä£¿éÔÙ°ÑËü·­Òë³É¸÷×Ô±¾µØÑ¡Ôñ
+```
+
+---
+
+## Scenario: First-Layer Wrapper Top With Global Weight Distributor
+
+### 1. Scope / Trigger
+- Trigger: the project now has a global logical weight distributor, but only the first convolution layer is integrated into the runnable compute chain.
+
+### 2. Signatures
+- Wrapper top input:
+  - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`
+- Global distributor bridge:
+  - `weight_valid`, `weight_data`, `weight_dst2d`, `weight_idx`, `dst_last`, `weight_ready`
+- First-layer local bridge:
+  - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`, `cfg_weight_lane`
+- Compute/start gating:
+  - wrapper `scan_ready`
+  - wrapper `cfg_weight_done`
+  - local first-layer `weight_loaded`
+
+### 3. Contracts
+- `l1_top` owns the translation from global logical weight target `{layer_id, kernel_id}` into the existing local first-layer `cfg_weight_lane` contract.
+- Only global targets `(0,0)` through `(0,5)` may be forwarded into `l1_top`.
+- The wrapper must preserve the existing `l1_core` ownership split:
+  - image load and image buffer stay inside `l1_core`
+  - address management stays inside `l1_top`
+  - `6`-lane convolution and `6` output ping-pong buffers stay inside `l1_core`
+- During the current first-layer-only bring-up:
+  - non-first-layer targets are accepted by the wrapper so the global preload stream can complete
+  - those non-first-layer weights must not be forwarded into `l1_top`
+- `scan_ready` at wrapper level must stay low until the global preload transaction has completed.
+- `weight_loaded` at wrapper level still means all six first-layer convolution lanes have loaded their own weights.
+- `cfg_weight_done` at wrapper level means the full global preload stream has finished.
+
+### 4. Validation & Error Matrix
+- forward `(layer_id != 0)` weights into `l1_top` -> first-layer kernels receive wrong weights
+- block global preload on an unimplemented later-layer target -> startup deadlock
+- allow `scan_ready=1` before global preload completes -> compute may start before the intended startup preload phase ends
+- rewrite image/cache/address logic into the wrapper -> layer-boundary ownership drift and tighter coupling
+
+### 5. Good/Base/Bad Cases
+- Good: wrapper accepts the full global preload stream, routes only `(0,0)~(0,5)` into `l1_top`, then starts first-layer compute after preload completion.
+- Base: first-layer TB uses real `6 * 25` weights for layer 0 and placeholder zero weights for layer 1 so the global preload transaction can still end normally.
+- Bad: bypass the translation layer and directly connect global `weight_valid` to local `cfg_weight_valid` without checking `layer_id`.
+
+### 6. Tests Required
+- Behavioral integration TB for `l1_top` must cover:
+  - real image load from `test/0.txt`
+  - full global preload stream:
+    - layer 0: `6 * 25` real weights
+    - layer 1: `12 * 150` placeholder weights
+  - assertion points:
+    - `cfg_weight_done` pulses once after the full global stream
+    - `cfg_last_err=0` for the good path
+    - wrapper `scan_ready` only becomes high after preload completion
+    - first-layer `24x24` output map still matches the PC golden file
+    - all six output ping-pong buffers can be read back and released independently
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// ²»Çø·Ö²ãºÅ, Ö±½Ó°ÑÈ«¾ÖÈ¨ÖØÁ÷ËÍ½øµÚÒ»²ã
+assign l1_cfg_weight_valid = gw_weight_valid;
+assign l1_cfg_weight_last  = gw_dst_last;
+assign l1_cfg_weight_lane  = gw_weight_dst2d[KERNEL_ID_WIDTH-1:0];
+```
+
+#### Correct
+```verilog
+// Ö»ÓĞµÚÒ»²ãÂß¼­Ä¿±ê²ÅÔÊĞí½øÈë l1_top
+assign gw_is_l1_target = (gw_layer_id == LAYER0_ID) && (gw_kernel_id < L0_KERNEL_NUM);
+assign l1_cfg_weight_valid = gw_weight_valid && gw_is_l1_target;
+assign l1_cfg_weight_last  = gw_dst_last && gw_is_l1_target;
+assign l1_cfg_weight_lane  = gw_kernel_id[LANE_SEL_WIDTH-1:0];
+assign gw_weight_ready     = gw_is_l1_target ? l1_cfg_weight_ready : 1'b1;
 ```
 
 ---
@@ -1185,16 +1437,88 @@ l1_wgt_dist u_l1_wgt_dist (
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// é¡¶å±‚ç›´æ¥æŠŠçª—å£åœ°å€æŒç»­æ¨è¿›, ä¸ç®¡è¯»å›åº”å’Œå·ç§¯æ¥æ”¶
+// ¶¥²ãÖ±½Ó°Ñ´°¿ÚµØÖ·³ÖĞøÍÆ½ø, ²»¹Ü¶Á»ØÓ¦ºÍ¾í»ı½ÓÊÕ
 assign win_addr_ready = scan_running;
 ```
 
 #### Correct
 ```verilog
-// é¡¶å±‚åœ¨è¯»å›åº”å’Œåƒç´ æ¶ˆè´¹ä¹‹é—´åšå•æ‹ç¼“å†²å’Œæµæ§
+// ¶¥²ãÔÚ¶Á»ØÓ¦ºÍÏñËØÏû·ÑÖ®¼ä×öµ¥ÅÄ»º³åºÍÁ÷¿Ø
 assign win_addr_ready = scan_running
                      && buf_frame_valid
                      && !rd_pending
                      && !pix_valid_reg
                      && conv_in_ready;
+```
+
+
+---
+
+## Scenario: First-Layer Output Ping-Pong Buffer Must Infer BRAM
+
+### 1. Scope / Trigger
+- Trigger: first-layer `6` Â·Êä³öÌØÕ÷Í¼»º´æ´Ó¼Ä´æÆ÷ÕóÁĞÊµÏÖÇĞ»»µ½ BRAM ÍÆ¶ÏÓÑºÃÊµÏÖ, ±ÜÃâ `24x24x32x2x6` ¹æÄ£±»×ÛºÏ³É´óÁ¿ LUT/FF.
+
+### 2. Signatures
+- Module:
+  - `pingpong_img_buf`
+- Storage side:
+  - `bank0 [0:DEPTH-1]`
+  - `bank1 [0:DEPTH-1]`
+- Interface:
+  - `wr_valid`, `wr_data`, `wr_addr2d`, `wr_last`, `wr_ready`, `wr_done`
+  - `rd_en`, `rd_addr2d`, `rd_data`, `rd_valid`, `rd_done`
+
+### 3. Contracts
+- OutputÌØÕ÷Í¼Æ¹ÅÒ»º´æ±ØĞëÓÅÏÈÊµÏÖÎª¿éRAM, ²»ÄÜÄ¬ÈÏÒÀÀµ×ÛºÏÆ÷°ÑÆÕÍ¨¼Ä´æÆ÷Êı×é×Ô¶¯ÓÅ»¯³É¿É½ÓÊÜµÄ´æ´¢×ÊÔ´.
+- Á½¸öbank¶¼±ØĞëÊ¹ÓÃ BRAM ÍÆ¶ÏÓÑºÃĞ´·¨:
+  - `(* ram_style = "block" *) reg ... bank0 [...]`
+  - `(* ram_style = "block" *) reg ... bank1 [...]`
+- ¶Á¿Ú±ØĞë±£³Öµ±Ç°ÏµÍ³ÒÑ¾­Ê¹ÓÃµÄµ¥ÅÄÍ¬²½¶Á½Ó¿Ú:
+  - Íâ²¿ÔÚµÚ `N` ÅÄ¸ø³ö `rd_en + rd_addr2d`
+  - Ä£¿éÔÚµÚ `N+1` ÅÄ¸ø³ö¶ÔÓ¦ `rd_data + rd_valid`
+- Ğ´¿ÚÈÔÓÉÍâ²¿¶şÎ¬µØÖ·ÏÔÊ½Çı¶¯, Ä£¿éÄÚ²¿Ö»×ö `row * IMG_W + col` ×ª»».
+- ²»ÄÜÎªÁËÊ¡ÊÂ°ÑÍêÕû `24x24x32` ÌØÕ÷Í¼bank×ÛºÏ³É´¥·¢Æ÷ÕóÁĞ.
+
+### 4. Validation & Error Matrix
+- `pingpong_img_buf` ×ÛºÏºó `RAMB18/RAMB36 = 0` ÇÒ `FF/LUT` Òì³£ÅòÕÍ -> ÊÓÎªÊµÏÖ´íÎó
+- ĞŞ¸ÄÎªBRAM°æºó, `rd_valid` Ïà¶Ô¾É½Ó¿Ú¶àÍÏÒ»ÅÄ -> ÊÓÎª½Ó¿Ú»Ø¹é
+- ÎªÁËÍÆ¶ÏBRAM°Ñ¶Á¿Ú¸Ä³ÉÒì²½¶Á×éºÏÂß¼­ -> ÊÓÎª´íÎóĞ´·¨
+- ¶¥²ã×ÊÔ´±©ÕÇÇÒÖ÷ÒªÀ´Ô´Îª `FDRE` / `LUT6` ¶ø·Ç `RAMB18` -> ÓÅÏÈ¼ì²é `pingpong_img_buf` ÊÇ·ñÈÔÔÚ¼Ä´æÆ÷»¯
+
+### 5. Good/Base/Bad Cases
+- Good: `pingpong_img_buf` µÄÁ½¸öbank¶¼ÒÔ block RAM ÍÆ¶Ï, ¶¥²ã 6 Â·Êä³ö»º´æÖ÷ÒªÏûºÄ BRAM.
+- Base: Î¬³ÖÏÖÓĞÍâ²¿½Ó¿ÚºÍ TB Ê±Ğò, Ö»Ìæ»»ÄÚ²¿´æ´¢ÊµÏÖ.
+- Bad: ¼ÌĞøÊ¹ÓÃÆÕÍ¨ `reg [31:0] bank0 [0:575]` / `bank1 [0:575]` ²¢ÈÃ Vivado °ÑÕû¿éÊı¾İÌ¯³É¼Ä´æÆ÷.
+
+### 6. Tests Required
+- ĞĞÎª·ÂÕæ:
+  - ÏÖÓĞ `l1_top_tb` ±ØĞë¼ÌĞøÍ¨¹ı
+  - ¶ÏÑÔµã: `SUMMARY: err_cnt=0`
+- ×ÛºÏ¼ì²é:
+  - µ¥¶À×ÛºÏ `pingpong_img_buf` »òÍêÕû×ÛºÏ `l1_top`
+  - ¶ÏÑÔµã: Êä³ö»º´æÏà¹Ø×ÊÔ´¿ªÊ¼½øÈë `RAMB18/RAMB36`
+  - ¶ÏÑÔµã: ²»ÔÙ³öÏÖ´ËÇ°ÄÇÖÖ `FDRE` ¶şÊ®¶àÍò¼¶µÄÒì³£ÅòÕÍ
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+reg signed [31:0] bank0 [0:575];
+reg signed [31:0] bank1 [0:575];
+
+always @(posedge clk) begin
+    if(wr_fire) bank0[wr_addr_1d] <= wr_data;
+    if(rd_en)   rd_data <= bank0[rd_addr_1d];
+end
+```
+
+#### Correct
+```verilog
+(* ram_style = "block" *) reg signed [31:0] bank0 [0:575];
+(* ram_style = "block" *) reg signed [31:0] bank1 [0:575];
+
+always @(posedge clk) begin
+    if(bank0_wr_fire) bank0[wr_addr_1d] <= wr_data;
+    if(bank0_rd_fire) bank0_rd_data <= bank0[rd_addr_1d];
+end
 ```

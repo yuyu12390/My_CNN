@@ -1,10 +1,6 @@
 `timescale 1ns / 1ns
 
-// 第一层对外顶层仿真
-// 1. 先送完整全局权重流, 直接使用真实 cw.txt
-// 2. 全局预装载完成后, 再启动第一层扫描
-// 3. TB 内部按第一层 6 组真实权重计算 6 路期望结果
-module l1_top_tb;
+module l1_core_tb;
 
     localparam integer CLK_PERIOD = 20;
     localparam integer LANE_NUM = 6;
@@ -24,21 +20,13 @@ module l1_top_tb;
     localparam integer TOTAL_WIN = OUT_W * OUT_H;
     localparam integer IMAGE_LEN = IMG_W * IMG_H;
     localparam integer WIN_SIZE = K * K;
-    localparam integer L0_KERNEL_NUM = 6;
-    localparam integer L0_WEIGHT_NUM = 25;
-    localparam integer L1_KERNEL_NUM = 12;
-    localparam integer L1_WEIGHT_NUM = 150;
-    localparam integer TOTAL_GLOBAL_WEIGHT = (L0_KERNEL_NUM * L0_WEIGHT_NUM)
-                                           + (L1_KERNEL_NUM * L1_WEIGHT_NUM);
     localparam integer TARGET_BASE_ROW = 4;
     localparam integer TARGET_BASE_COL = 12;
     localparam integer TARGET_WIN_IDX = (TARGET_BASE_ROW * OUT_W) + TARGET_BASE_COL;
-    localparam integer LAYER_ID_WIDTH = 1;
-    localparam integer KERNEL_ID_WIDTH = 4;
-    localparam integer WEIGHT_IDX_WIDTH = 8;
-    localparam integer DST2D_WIDTH = LAYER_ID_WIDTH + KERNEL_ID_WIDTH;
     localparam IMAGE_FILE = "C:/Users/28010/Desktop/my_cnn/test/0.txt";
-    localparam WEIGHT_FILE = "C:/Users/28010/Desktop/my_cnn/sim/cnn_test/cw.txt";
+    localparam WEIGHT_FILE = "C:/Users/28010/Desktop/my_cnn/vivado_prj/my_cnnV4/my_cnnV4_PCtest/conv_l1_case0_weights.txt";
+    localparam RESULT_FILE = "C:/Users/28010/Desktop/my_cnn/vivado_prj/my_cnnV4/my_cnnV4_PCtest/conv_l1_case0_result.txt";
+    localparam FEATURE_MAP_FILE = "C:/Users/28010/Desktop/my_cnn/vivado_prj/my_cnnV4/my_cnnV4_PCtest/conv_l1_case0_feature_map.txt";
 
     reg clk;
     reg rstn;
@@ -48,6 +36,7 @@ module l1_top_tb;
     reg cfg_weight_valid;
     reg signed [WEIGHT_WIDTH-1:0] cfg_weight_data;
     reg cfg_weight_last;
+    reg [LANE_SEL_WIDTH-1:0] cfg_weight_lane;
     reg scan_start;
     reg frame_release;
     reg out_ready;
@@ -56,10 +45,9 @@ module l1_top_tb;
     reg [LANE_NUM-1:0] ofmap_rd_done;
 
     wire cfg_weight_ready;
-    wire cfg_weight_done;
-    wire cfg_last_err;
     wire image_tready;
     wire scan_ready;
+    wire cfg_weight_done;
     wire img_wr_done;
     wire img_frame_valid;
     wire scan_busy;
@@ -94,21 +82,15 @@ module l1_top_tb;
     wire [LANE_NUM-1:0] lane_ofmap_frame_valid;
     wire signed [LANE_NUM*OUT_WIDTH-1:0] ofmap_rd_data;
     wire [LANE_NUM-1:0] ofmap_rd_valid;
-    wire [DST2D_WIDTH-1:0] dbg_gw_weight_dst2d;
-    wire [WEIGHT_IDX_WIDTH-1:0] dbg_gw_weight_idx;
-    wire dbg_gw_dst_last;
-    wire dbg_gw_load_busy;
-    wire dbg_gw_preload_done;
-    wire dbg_gw_is_l1_target;
-    wire [LANE_SEL_WIDTH-1:0] dbg_gw_lane_idx;
 
     reg [7:0] img_mem [0:IMAGE_LEN-1];
-    reg signed [WEIGHT_WIDTH-1:0] global_weight_mem [0:TOTAL_GLOBAL_WEIGHT-1];
-    reg signed [WEIGHT_WIDTH-1:0] l0_weight_mem [0:(L0_KERNEL_NUM * L0_WEIGHT_NUM)-1];
-    reg signed [OUT_WIDTH-1:0] exp_feature_map [0:(LANE_NUM * TOTAL_WIN)-1];
+    reg signed [WEIGHT_WIDTH-1:0] weight_mem [0:WIN_SIZE-1];
+    reg signed [OUT_WIDTH-1:0] exp_feature_map [0:TOTAL_WIN-1];
 
     integer fp_img;
     integer fp_weight;
+    integer fp_result;
+    integer fp_feature_map;
     integer rc;
     integer i;
     integer idx;
@@ -117,21 +99,10 @@ module l1_top_tb;
     integer exp_sum;
     integer out_cnt;
     integer wait_cycle;
-    integer global_idx;
-    integer calc_lane;
-    integer calc_row;
-    integer calc_col;
-    integer calc_krow;
-    integer calc_kcol;
-    integer calc_img_idx;
-    integer calc_w_idx;
-    integer calc_sum;
     reg target_seen;
     reg ofmap_wr_done_seen;
-    reg cfg_weight_done_seen;
-    reg cfg_last_err_seen;
 
-    l1_top #(
+    l1_core #(
         .LANE_NUM(LANE_NUM),
         .LANE_SEL_WIDTH(LANE_SEL_WIDTH),
         .DATA_WIDTH(DATA_WIDTH),
@@ -144,16 +115,8 @@ module l1_top_tb;
         .ROW_ADDR_WIDTH(ROW_ADDR_WIDTH),
         .COL_ADDR_WIDTH(COL_ADDR_WIDTH),
         .ADDR2D_WIDTH(ADDR2D_WIDTH),
-        .ADDR1D_WIDTH(10),
-        .LAYER_ID_WIDTH(LAYER_ID_WIDTH),
-        .KERNEL_ID_WIDTH(KERNEL_ID_WIDTH),
-        .WEIGHT_IDX_WIDTH(WEIGHT_IDX_WIDTH),
-        .L0_KERNEL_NUM(L0_KERNEL_NUM),
-        .L0_WEIGHT_NUM(L0_WEIGHT_NUM),
-        .L1_KERNEL_NUM(L1_KERNEL_NUM),
-        .L1_WEIGHT_NUM(L1_WEIGHT_NUM),
-        .DST2D_WIDTH(DST2D_WIDTH)
-    ) u_l1_top_wrapper (
+        .ADDR1D_WIDTH(10)
+    ) u_l1_core (
         .clk(clk),
         .rstn(rstn),
         .frame_start(frame_start),
@@ -162,6 +125,7 @@ module l1_top_tb;
         .cfg_weight_valid(cfg_weight_valid),
         .cfg_weight_data(cfg_weight_data),
         .cfg_weight_last(cfg_weight_last),
+        .cfg_weight_lane(cfg_weight_lane),
         .scan_start(scan_start),
         .frame_release(frame_release),
         .out_ready(out_ready),
@@ -169,10 +133,9 @@ module l1_top_tb;
         .ofmap_rd_addr2d(ofmap_rd_addr2d),
         .ofmap_rd_done(ofmap_rd_done),
         .cfg_weight_ready(cfg_weight_ready),
-        .cfg_weight_done(cfg_weight_done),
-        .cfg_last_err(cfg_last_err),
         .image_tready(image_tready),
         .scan_ready(scan_ready),
+        .cfg_weight_done(cfg_weight_done),
         .img_wr_done(img_wr_done),
         .img_frame_valid(img_frame_valid),
         .scan_busy(scan_busy),
@@ -206,14 +169,7 @@ module l1_top_tb;
         .lane_ofmap_wr_done(lane_ofmap_wr_done),
         .lane_ofmap_frame_valid(lane_ofmap_frame_valid),
         .ofmap_rd_data(ofmap_rd_data),
-        .ofmap_rd_valid(ofmap_rd_valid),
-        .dbg_gw_weight_dst2d(dbg_gw_weight_dst2d),
-        .dbg_gw_weight_idx(dbg_gw_weight_idx),
-        .dbg_gw_dst_last(dbg_gw_dst_last),
-        .dbg_gw_load_busy(dbg_gw_load_busy),
-        .dbg_gw_preload_done(dbg_gw_preload_done),
-        .dbg_gw_is_l1_target(dbg_gw_is_l1_target),
-        .dbg_gw_lane_idx(dbg_gw_lane_idx)
+        .ofmap_rd_valid(ofmap_rd_valid)
     );
 
     always #(CLK_PERIOD / 2) clk = ~clk;
@@ -227,22 +183,12 @@ module l1_top_tb;
             ofmap_wr_done_seen = 1'b1;
         end
 
-        if(cfg_weight_done)
-        begin
-            cfg_weight_done_seen = 1'b1;
-        end
-
-        if(cfg_last_err)
-        begin
-            cfg_last_err_seen = 1'b1;
-        end
-
         if(out_valid)
         begin
-            if(out_data !== pick_exp_feature_map(0, out_cnt))
+            if(out_data !== exp_feature_map[out_cnt])
             begin
                 $display("ERROR: lane0 out idx=%0d data=%0d expect=%0d",
-                         out_cnt, out_data, pick_exp_feature_map(0, out_cnt));
+                         out_cnt, out_data, exp_feature_map[out_cnt]);
                 err_cnt = err_cnt + 1;
             end
 
@@ -254,6 +200,17 @@ module l1_top_tb;
                     $display("TARGET_OK win=%0d row=%0d col=%0d data=%0d",
                              out_cnt, TARGET_BASE_ROW, TARGET_BASE_COL, out_data);
                 end
+            end
+
+            if(out_cnt < 3 || out_cnt == TARGET_WIN_IDX || out_cnt == TOTAL_WIN - 1)
+            begin
+                $display("OUT idx=%0d data=%0d base_row=%0d base_col=%0d wr_row=%0d wr_col=%0d",
+                         out_cnt,
+                         out_data,
+                         dbg_win_base_row,
+                         dbg_win_base_col,
+                         dbg_out_wr_addr2d[ADDR2D_WIDTH-1:COL_ADDR_WIDTH],
+                         dbg_out_wr_addr2d[COL_ADDR_WIDTH-1:0]);
             end
 
             out_cnt = out_cnt + 1;
@@ -270,6 +227,7 @@ module l1_top_tb;
         cfg_weight_valid = 1'b0;
         cfg_weight_data = 'd0;
         cfg_weight_last = 1'b0;
+        cfg_weight_lane = {LANE_SEL_WIDTH{1'b0}};
         scan_start = 1'b0;
         frame_release = 1'b0;
         out_ready = 1'b1;
@@ -281,8 +239,6 @@ module l1_top_tb;
         out_cnt = 0;
         target_seen = 1'b0;
         ofmap_wr_done_seen = 1'b0;
-        cfg_weight_done_seen = 1'b0;
-        cfg_last_err_seen = 1'b0;
 
         fp_img = $fopen(IMAGE_FILE, "r");
         if(fp_img == 0)
@@ -298,6 +254,20 @@ module l1_top_tb;
             $finish;
         end
 
+        fp_result = $fopen(RESULT_FILE, "r");
+        if(fp_result == 0)
+        begin
+            $display("ERROR: failed to open %s", RESULT_FILE);
+            $finish;
+        end
+
+        fp_feature_map = $fopen(FEATURE_MAP_FILE, "r");
+        if(fp_feature_map == 0)
+        begin
+            $display("ERROR: failed to open %s", FEATURE_MAP_FILE);
+            $finish;
+        end
+
         for(i = 0; i < IMAGE_LEN; i = i + 1)
         begin
             rc = $fscanf(fp_img, "%b", img_mem[i]);
@@ -309,9 +279,9 @@ module l1_top_tb;
         end
         $fclose(fp_img);
 
-        for(i = 0; i < TOTAL_GLOBAL_WEIGHT; i = i + 1)
+        for(i = 0; i < WIN_SIZE; i = i + 1)
         begin
-            rc = $fscanf(fp_weight, "%d", global_weight_mem[i]);
+            rc = $fscanf(fp_weight, "%d", weight_mem[i]);
             if(rc != 1)
             begin
                 $display("ERROR: weight preload failed at line %0d", i);
@@ -320,58 +290,33 @@ module l1_top_tb;
         end
         $fclose(fp_weight);
 
-        for(i = 0; i < (L0_KERNEL_NUM * L0_WEIGHT_NUM); i = i + 1)
+        rc = $fscanf(fp_result, "%d", exp_sum);
+        if(rc != 1)
         begin
-            l0_weight_mem[i] = global_weight_mem[i];
+            $display("ERROR: result preload failed");
+            $finish;
         end
+        $fclose(fp_result);
 
-        for(calc_lane = 0; calc_lane < LANE_NUM; calc_lane = calc_lane + 1)
+        for(i = 0; i < TOTAL_WIN; i = i + 1)
         begin
-            for(calc_row = 0; calc_row < OUT_H; calc_row = calc_row + 1)
+            rc = $fscanf(fp_feature_map, "%d", exp_feature_map[i]);
+            if(rc != 1)
             begin
-                for(calc_col = 0; calc_col < OUT_W; calc_col = calc_col + 1)
-                begin
-                    calc_sum = 0;
-
-                    for(calc_krow = 0; calc_krow < K; calc_krow = calc_krow + 1)
-                    begin
-                        for(calc_kcol = 0; calc_kcol < K; calc_kcol = calc_kcol + 1)
-                        begin
-                            calc_img_idx = ((calc_row + calc_krow) * IMG_W) + (calc_col + calc_kcol);
-                            calc_w_idx = (calc_lane * L0_WEIGHT_NUM) + (calc_krow * K) + calc_kcol;
-                            calc_sum = calc_sum
-                                     + ($signed({1'b0, img_mem[calc_img_idx]})
-                                     * $signed(l0_weight_mem[calc_w_idx]));
-                        end
-                    end
-
-                    exp_feature_map[(calc_lane * TOTAL_WIN) + (calc_row * OUT_W) + calc_col] = calc_sum;
-                end
+                $display("ERROR: feature_map preload failed at idx=%0d", i);
+                $finish;
             end
         end
-
-        exp_sum = pick_exp_feature_map(0, TARGET_WIN_IDX);
+        $fclose(fp_feature_map);
 
         #60;
         rstn = 1'b1;
 
         send_one_frame;
-        load_full_global_weight_stream;
+        load_six_kernels_same_weights;
         start_scan_and_wait;
         check_all_lane_feature_maps;
         release_input_frame_and_check;
-
-        if(cfg_last_err_seen)
-        begin
-            $display("ERROR: cfg_last_err should stay low in good global wrapper flow");
-            err_cnt = err_cnt + 1;
-        end
-
-        if(!cfg_weight_done_seen)
-        begin
-            $display("ERROR: cfg_weight_done pulse was not observed");
-            err_cnt = err_cnt + 1;
-        end
 
         $display("SUMMARY: err_cnt=%0d out_cnt=%0d target_seen=%b",
                  err_cnt, out_cnt, target_seen);
@@ -398,6 +343,14 @@ module l1_top_tb;
 
                 if(image_tvalid && image_tready)
                 begin
+                    if(idx < 4)
+                    begin
+                        $display("IMG idx=%0d row=%0d col=%0d data=%0d",
+                                 idx,
+                                 dbg_img_wr_addr2d[ADDR2D_WIDTH-1:COL_ADDR_WIDTH],
+                                 dbg_img_wr_addr2d[COL_ADDR_WIDTH-1:0],
+                                 image_tdata);
+                    end
                     idx = idx + 1;
                     wait_cycle = 0;
                 end
@@ -433,39 +386,51 @@ module l1_top_tb;
         end
     endtask
 
-    task load_full_global_weight_stream;
+    task load_six_kernels_same_weights;
         begin
-            for(global_idx = 0; global_idx < TOTAL_GLOBAL_WEIGHT; global_idx = global_idx + 1)
+            for(lane = 0; lane < LANE_NUM; lane = lane + 1)
             begin
-                @(negedge clk);
-                cfg_weight_valid = 1'b1;
-                cfg_weight_last = (global_idx == TOTAL_GLOBAL_WEIGHT - 1);
-
-                cfg_weight_data = global_weight_mem[global_idx];
-
-                while(!cfg_weight_ready)
+                for(idx = 0; idx < WIN_SIZE; idx = idx + 1)
                 begin
                     @(negedge clk);
+                    cfg_weight_valid = 1'b1;
+                    cfg_weight_data = weight_mem[idx];
+                    cfg_weight_last = (idx == WIN_SIZE - 1);
+                    cfg_weight_lane = lane[LANE_SEL_WIDTH-1:0];
+
+                    @(posedge clk);
+                    #1;
+                    if(!cfg_weight_ready)
+                    begin
+                        $display("ERROR: cfg_weight_ready low at lane=%0d idx=%0d", lane, idx);
+                        err_cnt = err_cnt + 1;
+                    end
+
+                    if(idx < 2)
+                    begin
+                        $display("WGT lane=%0d idx=%0d data=%0d last=%b",
+                                 lane, idx, cfg_weight_data, cfg_weight_last);
+                    end
+                end
+
+                @(negedge clk);
+                cfg_weight_valid = 1'b0;
+                cfg_weight_data = 'd0;
+                cfg_weight_last = 1'b0;
+                cfg_weight_lane = {LANE_SEL_WIDTH{1'b0}};
+
+                repeat(2) @(posedge clk);
+                #1;
+                if(!lane_weight_loaded[lane])
+                begin
+                    $display("ERROR: lane_weight_loaded[%0d] should go high", lane);
+                    err_cnt = err_cnt + 1;
                 end
             end
 
-            @(negedge clk);
-            cfg_weight_valid = 1'b0;
-            cfg_weight_data = 'd0;
-            cfg_weight_last = 1'b0;
-
-            repeat(2) @(posedge clk);
-            #1;
-
             if(!weight_loaded)
             begin
-                $display("ERROR: first-layer weight_loaded should go high after full global stream");
-                err_cnt = err_cnt + 1;
-            end
-
-            if(!dbg_gw_preload_done)
-            begin
-                $display("ERROR: global preload done latch should go high");
+                $display("ERROR: all weight_loaded should go high after 6 lanes load");
                 err_cnt = err_cnt + 1;
             end
         end
@@ -507,6 +472,12 @@ module l1_top_tb;
             if(!target_seen)
             begin
                 $display("ERROR: target window result not observed");
+                err_cnt = err_cnt + 1;
+            end
+
+            if(!ofmap_frame_valid)
+            begin
+                $display("ERROR: all output feature-map buffers should become valid");
                 err_cnt = err_cnt + 1;
             end
         end
@@ -555,10 +526,10 @@ module l1_top_tb;
                 end
 
                 rd_value = pick_lane_rd_data(lane_id);
-                if(rd_value !== pick_exp_feature_map(lane_id, idx))
+                if(rd_value !== exp_feature_map[idx])
                 begin
                     $display("ERROR: lane=%0d ofmap idx=%0d data=%0d expect=%0d",
-                             lane_id, idx, rd_value, pick_exp_feature_map(lane_id, idx));
+                             lane_id, idx, rd_value, exp_feature_map[idx]);
                     err_cnt = err_cnt + 1;
                     disable read_back_one_lane;
                 end
@@ -655,16 +626,6 @@ module l1_top_tb;
                 4: pick_lane_rd_data = ofmap_rd_data[(5 * OUT_WIDTH) - 1 -: OUT_WIDTH];
                 default: pick_lane_rd_data = ofmap_rd_data[(6 * OUT_WIDTH) - 1 -: OUT_WIDTH];
             endcase
-        end
-    endfunction
-
-    function signed [OUT_WIDTH-1:0] pick_exp_feature_map;
-        input integer lane_id;
-        input integer point_idx;
-        integer flat_idx;
-        begin
-            flat_idx = (lane_id * TOTAL_WIN) + point_idx;
-            pick_exp_feature_map = exp_feature_map[flat_idx];
         end
     endfunction
 
