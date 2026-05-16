@@ -1026,6 +1026,120 @@ assign all_lane_commit_fire = out_ready
 
 ---
 
+## Convention: First-Layer Sequential Weight Stream Distributor
+
+**What**: For first-layer `1 -> 6` bring-up, the external controller may send one continuous serialized weight stream, and a dedicated distributor module splits it into `lane + last` control for the existing `l1_top`.
+
+**Why**:
+- It removes manual per-lane drive logic from the top-level TB and future control path.
+- It keeps `conv_l1` unchanged and preserves the existing lane-local weight ownership.
+- It provides one clear boundary where stream-level validation such as final `last` timing can be checked.
+
+### Required Interface Contract
+
+- Upstream stream side:
+  - `cfg_weight_valid`
+  - `cfg_weight_data`
+  - `cfg_weight_last`
+  - `cfg_weight_ready`
+- Downstream lane-select side:
+  - `lane_cfg_weight_valid`
+  - `lane_cfg_weight_data`
+  - `lane_cfg_weight_last`
+  - `lane_cfg_weight_lane`
+  - `lane_cfg_weight_ready`
+
+### Required Behavior
+
+- One complete first-layer load transaction contains `LANE_NUM * K * K` weight beats.
+- The distributor must emit lane `0` first, then lane `1`, up to lane `LANE_NUM-1`.
+- Every `K*K` accepted beats, the distributor must assert `lane_cfg_weight_last` for exactly one accepted beat.
+- The external `cfg_weight_last` must only assert on the final accepted beat of the full stream.
+- If external `cfg_weight_last` timing is wrong, the module may raise an error flag such as `cfg_last_err`, but it must still preserve internal lane grouping based on its own counters.
+- The distributor must fully respect downstream backpressure through `lane_cfg_weight_ready`.
+
+### Good Pattern
+
+```verilog
+assign cfg_weight_ready = lane_cfg_weight_ready;
+assign lane_cfg_weight_valid = cfg_weight_valid;
+assign lane_cfg_weight_lane = cur_lane_idx;
+assign lane_cfg_weight_last = lane_cfg_weight_valid && (cur_weight_idx == WIN_SIZE - 1);
+```
+
+### Wrong Pattern
+
+- Do not require the upstream to manually drive both `cfg_weight_lane` and `cfg_weight_last` for every lane-group beat.
+- Do not let an early external `cfg_weight_last` reset the internal lane counters immediately.
+- Do not merge weight-stream distribution into `conv_l1`.
+
+### Tests Required
+
+- Standalone `l1_wgt_dist_tb` must verify:
+  - correct lane order `0 -> 5`
+  - correct per-lane `25`-beat grouping
+  - backpressure stall behavior
+  - one error pulse on deliberate wrong external `cfg_weight_last`
+- Wrapper `l1_top_w_tb` must verify the full `24x24` feature-map result still matches the PC golden file.
+
+---
+
+## Scenario: First-Layer Wrapper Top With Weight Distributor
+
+### 1. Scope / Trigger
+- Trigger: the first-layer `6`-lane top now needs a cleaner external control entry that accepts one continuous weight stream without explicit external lane numbering.
+
+### 2. Signatures
+- Wrapper top input:
+  - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`
+- Wrapper top status:
+  - `cfg_weight_ready`, `cfg_weight_done`, `cfg_last_err`
+- Internal bridge:
+  - distributor output `lane_cfg_weight_*`
+  - existing `l1_top` input `cfg_weight_* + cfg_weight_lane`
+
+### 3. Contracts
+- `l1_top_w` owns the adaptation from continuous stream weights to the existing `l1_top` per-lane weight-load contract.
+- `l1_top` remains the compute/integration core and should not absorb the stream-distribution logic.
+- `cfg_weight_done` at wrapper level means the full `6 * 25` weight stream has been accepted.
+- `weight_loaded` at wrapper level still means all six `conv_l1` lanes report loaded.
+
+### 4. Validation & Error Matrix
+- wrapper bypasses distributor and still requires manual `cfg_weight_lane` externally -> wrong integration boundary
+- `cfg_weight_done` pulses after only one lane group -> premature start hazard
+- wrong external `cfg_weight_last` is silently ignored with no visibility -> debug blind spot
+
+### 5. Good/Base/Bad Cases
+- Good: upstream sends the same `25`-weight file six times in sequence and wrapper produces the same six feature maps.
+- Base: current TB reuses `conv_l1_case0_weights.txt` for all six lanes and verifies lane 0 against the PC golden map.
+- Bad: wrapper mutates the accepted weight order relative to the input stream.
+
+### 6. Tests Required
+- `l1_top_w_tb` must cover:
+  - real image load
+  - one continuous `150`-beat weight stream
+  - full `576` output-point scan
+  - output readback from all six lane buffers
+  - `cfg_last_err=0` for the good path
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 外部还要手写 lane 编号, 包装层形同虚设
+assign top_cfg_weight_lane = ext_cfg_weight_lane;
+```
+
+#### Correct
+```verilog
+// 包装层内部自动把串行权重流拆给 6 路卷积核
+l1_wgt_dist u_l1_wgt_dist (
+    .cfg_weight_valid(cfg_weight_valid),
+    .lane_cfg_weight_lane(dist_cfg_weight_lane)
+);
+```
+
+---
+
 ## Scenario: First-Layer Minimal Full-Chain Top
 
 ### 1. Scope / Trigger
