@@ -1,9 +1,13 @@
-conv_l1_case0 è¯´æ˜
+conv_l1_case0 ËµÃ÷
 
-1. æœ¬ç›®å½•ç”¨äºåœ¨ PC ä¸Šè®¡ç®— conv_l1 çš„é»„é‡‘å·ç§¯ç»“æœ
-2. å½“å‰æ ·ä¾‹ä¸ conv_l1_tb.v ä½¿ç”¨åŒä¸€ç»„è¾“å…¥çª—å£å’ŒåŒä¸€ç»„æƒé‡
-3. è¿è¡Œ conv_l1_case0.py åä¼šç”Ÿæˆ:
+1. ±¾Ä¿Â¼ÓÃÓÚÔÚ PC ÉÏ¼ÆËã conv_l1 µÄ»Æ½ğ¾í»ı½á¹û
+2. µ±Ç°ÑùÀıÓë conv_l1_tb.v ºÍ l1_top_tb.v Ê¹ÓÃÍ¬Ò»×éÊäÈëÍ¼ÏñÓëÍ¬Ò»×éÈ¨ÖØ
+3. ÔËĞĞ conv_l1_case0.py ºó»áÉú³É:
    - conv_l1_case0_pixels.txt
    - conv_l1_case0_weights.txt
    - conv_l1_case0_result.txt
-4. RTL ä»¿çœŸåº”å½“ä¸ conv_l1_case0_result.txt å®Œå…¨ä¸€è‡´
+   - conv_l1_case0_feature_map.txt
+4. conv_l1_case0_result.txt ÊÇÖ¸¶¨´°¿ÚµÄµ¥¸ö¾í»ıºÍ
+5. conv_l1_case0_feature_map.txt ÊÇÍêÕûµÄ 24x24 ¾í»ı½á¹û¾ØÕó
+6. l1_top_tb.v »á°´Ë³Ğò¶ÁÈ¡ feature_map ÎÄ¼şÖĞµÄ 576 ¸öÊı×öÖğµã±È¶Ô
+7. RTL ·ÂÕæ½á¹ûÓ¦µ±ÓëÉÏÊö»Æ½ğÎÄ¼şÍêÈ«Ò»ÖÂ

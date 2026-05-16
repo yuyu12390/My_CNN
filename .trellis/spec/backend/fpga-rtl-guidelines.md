@@ -545,6 +545,8 @@ assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 - The PC script owns the golden result generation.
 - The RTL TB must read the golden weight file and golden result file instead of re-deriving the expected value independently.
 - The PC-side result is the reference truth for the current directed case.
+- When a full-layer top-level TB exists, the PC script must also generate the complete output feature map for the current kernel and input image.
+- The feature-map golden file may be stored as a human-readable matrix, but the numeric traversal order must still match RTL output order.
 
 ### 4. Validation & Error Matrix
 - PC script and TB use different window coordinates -> false mismatch
@@ -561,6 +563,36 @@ assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 - Run the PC script and check the generated result file value.
 - Run RTL simulation and confirm `out_data == exp_sum`.
 - A passing directed case must end with `err_cnt=0`.
+- For full-chain first-layer simulation, generate `24 x 24 = 576` golden outputs and verify the TB finishes with `out_cnt=576` and `err_cnt=0`.
+
+### Convention: Full Feature Map Golden File For L1 Top
+
+**What**: `l1_top_tb` must compare every first-layer convolution output against one PC-generated full feature-map golden file, not only one directed window result.
+
+**Why**:
+- A single directed window only proves one `5x5` MAC instance.
+- The full `24x24` map also checks window traversal order, pixel-feed order, and end-of-scan behavior.
+- Keeping the feature-map file human-readable makes manual inspection easier during bring-up.
+
+### Required File Contract
+
+- PC script output:
+  - `conv_l1_case0_feature_map.txt`
+- File content:
+  - `24` rows
+  - each row contains `24` signed decimal convolution results
+  - whitespace-separated formatting is allowed so `$fscanf("%d", ...)` can read all `576` values in sequence
+- RTL TB behavior:
+  - preload all `576` expected results
+  - compare every `out_valid` beat against the corresponding golden value
+  - keep one visible directed checkpoint such as `(4,12) -> 1158`
+
+### Tests Required
+
+- Run the PC script and confirm the feature-map file is emitted in `24x24` matrix form.
+- Run `l1_top_tb` and confirm:
+  - `SUMMARY: err_cnt=0 out_cnt=576`
+  - the directed checkpoint window still matches the PC golden value
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -576,4 +608,479 @@ end
 // TB 直接读取 PC 侧生成的黄金结果
 fp_result = $fopen(RESULT_FILE, "r");
 rc = $fscanf(fp_result, "%d", exp_sum);
+```
+
+---
+
+## Convention: Window Address Manager Owns Only Spatial Scan
+
+**What**: The reusable window address manager for `my_cnnV4` owns only spatial window traversal over one feature map. It does not know output-channel count, ping-pong bank roles, or BRAM linear address math.
+
+**Why**:
+- First-layer `out=6` and later-layer `out=12` still reuse the same spatial window sequence.
+- Channel scheduling and bank ownership change between layers, but `(row, col)` window scan rules do not.
+- Keeping the module spatial-only prevents the address generator from becoming another tightly coupled control block.
+
+### Required Interface Contract
+
+- Control input:
+  - `start`
+  - `addr_ready`
+- Address output:
+  - `addr_valid`
+  - packed `addr2d = {row, col}`
+  - `addr_last` for the last pixel of the current window
+- Status output:
+  - `busy`
+  - `win_done`
+  - `all_done`
+  - current debug-visible window base and kernel offsets
+
+### Required Behavior
+
+- The module must scan one `K x K` window in row-major order.
+- After one window completes, the base column moves by `STRIDE`.
+- After the rightmost legal window completes, the base column resets and the base row moves by `STRIDE`.
+- After the final legal window completes, the module pulses `all_done` and returns idle.
+- The module must hold the current address stable while `addr_valid=1` and `addr_ready=0`.
+- The module must not include any `Cout` or channel index logic.
+- The module must not translate `{row, col}` into BRAM linear address.
+
+### Good Pattern
+
+```verilog
+win_addr_mgr #(
+    .FMAP_W(28),
+    .FMAP_H(28),
+    .K(5),
+    .STRIDE(1)
+) u_win_addr_mgr (
+    .clk(clk),
+    .rstn(rstn),
+    .start(win_scan_start),
+    .addr_ready(img_rd_addr_ready),
+    .addr_valid(img_rd_addr_valid),
+    .addr2d(img_rd_addr2d),
+    .addr_last(win_pix_last),
+    .win_done(one_window_done),
+    .all_done(all_window_done)
+);
+```
+
+### Wrong Pattern
+
+- Do not hard-code `6` or `12` output channels into the spatial address module.
+- Do not make the window address manager own ping-pong read-bank selection.
+- Do not make the window address manager own `row * width + col` conversion.
+
+### Tests Required
+
+- Verify the first window of `28x28`, `K=5`, `stride=1` scans from `(0,0)` to `(4,4)`.
+- Verify the second window starts at base `(0,1)`.
+- Verify the first beat of the next output row starts at base `(1,0)` after the `(0,23)` window completes.
+- Verify `addr_valid` and `addr2d` hold stable while `addr_ready=0`.
+- Verify the final beat of the full scan pulses both `win_done` and `all_done`.
+
+---
+
+## Scenario: Generic Spatial Window Address Generation
+
+### 1. Scope / Trigger
+- Trigger: `my_cnnV4` now needs a reusable convolution-read address manager that works for first-layer image RAM and later-layer ping-pong feature-map buffers.
+
+### 2. Signatures
+- RTL signature:
+  - inputs: `clk`, `rstn`, `start`, `addr_ready`
+  - outputs: `addr_valid`, `addr2d`, `addr_last`, `busy`, `win_done`, `all_done`
+  - debug/status outputs: `cur_base_row`, `cur_base_col`, `cur_krow`, `cur_kcol`
+
+### 3. Contracts
+- `FMAP_W`, `FMAP_H`, `K`, and `STRIDE` define the legal scan region.
+- `addr2d` is packed as `{row, col}`, with row in the upper bits and col in the lower bits.
+- One handshake corresponds to one pixel address inside the current convolution window.
+- `addr_last` is asserted on the last accepted address of the current window.
+- `win_done` is a one-cycle pulse after the final address of one window is accepted.
+- `all_done` is a one-cycle pulse after the final address of the final legal window is accepted.
+- The module is channel-count agnostic and must be broadcast-capable to multiple kernels or multiple source buffers.
+
+### 4. Validation & Error Matrix
+- `start=1` while `busy=1` -> new request ignored until current scan finishes
+- `addr_ready=0` while `addr_valid=1` -> current address and window state must hold
+- illegal design that mixes channel count into this module -> architectural coupling bug
+- illegal design that converts to linear BRAM address here -> ownership violation
+
+### 5. Good/Base/Bad Cases
+- Good: one spatial scan module broadcasts the same packed `{row,col}` sequence to six first-layer kernels.
+- Base: one module scans `28x28`, `K=5`, `stride=1` and produces `24 x 24 x 25` address beats.
+- Bad: duplicate six separate address counters only because there are six output channels.
+
+### 6. Tests Required
+- Standalone TB with `28x28`, `K=5`, `stride=1` and handshake stalls.
+- Assertions/checks for first window, second window, row-wrap window, and final `all_done`.
+- A passing TB should finish with `err_cnt=0`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 把输出通道数也耦合进窗口地址模块
+for(i = 0; i < 6; i = i + 1) begin
+    addr2d_ch[i] <= addr2d_ch[i] + 1'b1;
+end
+```
+
+#### Correct
+```verilog
+// 只生成一套空间地址, 由上层广播到多个卷积核或多个缓存
+assign img_rd_addr2d = win_addr2d;
+assign lane0_addr2d = win_addr2d;
+assign lane1_addr2d = win_addr2d;
+```
+
+---
+
+## Convention: First-Layer Integration Top Uses Single Outstanding Read
+
+**What**: The first bring-up top for `my_cnnV4` may keep the data path simple by allowing only one outstanding read from `img_in_buf` at a time before feeding `conv_l1`.
+
+**Why**:
+- `img_in_buf` returns one pixel per accepted read address.
+- `conv_l1` consumes one pixel stream beat at a time and may stall on output hold.
+- A single-outstanding-read bridge is the lowest-risk way to verify the full layer boundary before introducing a richer reader or pipelined prefetch.
+
+### Required Behavior
+
+- The top may issue a new window address only when:
+  - scan is active
+  - source frame is valid
+  - no prior read response is pending
+  - no buffered pixel is waiting for `conv_l1`
+  - `conv_l1.in_ready=1`
+- After one read request is accepted, the top must remember whether that request was the window-last beat.
+- When `img_in_buf.rd_valid=1`, the returned pixel is buffered into one local register stage and then forwarded to `conv_l1`.
+- The top must not start the next read request until the buffered pixel has been consumed by `conv_l1`.
+
+### Good Pattern
+
+```verilog
+assign win_addr_ready = scan_running
+                     && buf_frame_valid
+                     && !rd_pending
+                     && !pix_valid_reg
+                     && conv_in_ready;
+
+if(rd_issue_fire) begin
+    rd_pending <= 1'b1;
+    rd_last_pending <= win_addr_last;
+end
+
+if(buf_rd_valid) begin
+    rd_pending <= 1'b0;
+    pix_valid_reg <= 1'b1;
+    pix_data_reg <= buf_rd_data;
+    pix_last_reg <= rd_last_pending;
+end
+```
+
+### Wrong Pattern
+
+- Do not let `win_addr_mgr` free-run while `img_in_buf` responses are still pending.
+- Do not feed `conv_l1` directly from `img_in_buf.rd_data` without a valid-holding stage.
+- Do not use `image_tready=1` at the top boundary unless the write-side address is also valid for the same beat.
+
+### Tests Required
+
+- Full-chain TB must load one `28x28` image, load one `5x5` weight group, run all `576` windows, and observe `out_cnt=576`.
+- The directed window at `(4,12)` must still produce the PC golden result `1158`.
+- A passing TB should finish with `err_cnt=0`.
+
+---
+
+## Convention: First-Layer Unified Read-Write Address Manager
+
+**What**: The current first-layer baseline may use one dedicated controller to manage both the `25` window-read addresses and the single output-write address for each window result.
+
+**Why**:
+- For `5x5 stride=1` first-layer convolution, one input window maps directly to one output point.
+- The write address is exactly the current window base coordinate `{base_row, base_col}`.
+- Keeping this relation in one first-layer controller reduces top-level glue without pushing address ownership back into `conv_l1`.
+
+### Required Interface Contract
+
+- Control input:
+  - `start`
+  - `rd_addr_ready`
+  - `out_fire`
+- Read-side output:
+  - `rd_addr_valid`
+  - `rd_addr2d`
+  - `rd_addr_last`
+- Write-side output:
+  - `wr_addr_valid`
+  - `wr_addr2d`
+  - `wr_last`
+- Status output:
+  - `busy`
+  - `win_done`
+  - `map_done`
+
+### Required Behavior
+
+- The controller must emit exactly `K*K` read addresses for one window before exposing the corresponding write address.
+- The controller must hold the current write address stable until `out_fire=1`.
+- `out_fire` means the convolution result was both valid and successfully accepted by the downstream feature-map buffer.
+- The controller must not advance to the next output point merely because the `25` read addresses were issued.
+- `wr_addr2d` must equal the current window base coordinate.
+- `wr_last` must assert only on the final output point of the full output map.
+
+### Good Pattern
+
+```verilog
+assign conv_out_ready_int = ext_out_ready
+                         && ofmap_wr_ready
+                         && l1_wr_addr_valid;
+
+assign ofmap_out_fire = conv_out_valid && conv_out_ready_int;
+
+l1_addr_mgr u_l1_addr_mgr(
+    .rd_addr_ready(l1_rd_addr_ready),
+    .out_fire(ofmap_out_fire),
+    .wr_addr2d(l1_wr_addr2d),
+    .wr_last(l1_wr_last)
+);
+```
+
+### Wrong Pattern
+
+- Do not increment the output write address immediately after the `25th` read beat if the convolution result has not been written yet.
+- Do not make `conv_l1` count full-map output coordinates by itself.
+- Do not reuse the generic `win_addr_mgr` unchanged when the design also needs output-write hold behavior.
+
+### Tests Required
+
+- Standalone `l1_addr_mgr_tb` must verify `25` reads followed by one held write address for each output point.
+- Full-chain `l1_top_tb` must verify output write coordinates match the expected output-map traversal.
+- Final write must assert `wr_last` on output point `(23,23)` for the `28x28`, `K=5`, `stride=1` first-layer case.
+
+---
+
+## Convention: First-Layer Output Ping-Pong Buffer Stores 32bit Convolution Sums
+
+**What**: Before ReLU / quantization / pooling are inserted, the first-layer output ping-pong buffer stores raw `32bit signed` convolution sums.
+
+**Why**:
+- `conv_l1` currently exports signed `32bit` accumulation results.
+- The first baseline should preserve numerical truth across RTL / PC-golden comparison.
+- Early truncation would make bring-up harder and hide arithmetic mismatches.
+
+### Required Interface Contract
+
+- `pingpong_img_buf.DATA_WIDTH = OUT_WIDTH`
+- First-layer output buffer geometry:
+  - `IMG_W = 24`
+  - `IMG_H = 24`
+- Write payload:
+  - signed `32bit` convolution result
+
+### Required Behavior
+
+- The output feature-map ping-pong buffer must accept signed `32bit` write data without truncation.
+- The buffer may still use the same packed `{row, col}` write/read address convention as the image buffer.
+- Width reduction, activation, or pooling must happen in later dedicated stages, not implicitly inside the buffer.
+
+### Tests Required
+
+- Standalone `pingpong_img_buf_tb` must pass with signed `32bit` data values, including negative numbers.
+- `l1_top_tb` must confirm the stored output feature map matches the PC-generated `24x24` golden matrix exactly.
+
+---
+
+## Convention: First-Layer 1x6 Broadcast Top
+
+**What**: The current first-layer top may use one shared image-read path and one shared spatial address manager, then broadcast the same `5x5` pixel stream to `6` parallel `conv_l1` lanes.
+
+**Why**:
+- First-layer `Cin=1`, so every output channel reads the same input window coordinates.
+- Broadcasting one spatial stream removes duplicated read-control logic.
+- The top still keeps output-channel parallelism explicit by giving each lane its own weight state and its own output ping-pong buffer.
+
+### Required Interface Contract
+
+- Shared image side:
+  - one `img_in_buf`
+  - one `l1_addr_mgr`
+- Weight side:
+  - one serialized weight input stream
+  - one lane-select input `cfg_weight_lane`
+- Compute side:
+  - `6` instances of `conv_l1`
+- Output side:
+  - `6` instances of `pingpong_img_buf`
+
+### Required Behavior
+
+- The top must issue only one spatial read-address stream for one window.
+- The returned pixel beats must be broadcast to all `6` convolution lanes on the same accepted cycles.
+- Each lane owns its own preloaded `5x5` weight set.
+- Each lane writes its own output feature map into its own ping-pong buffer.
+- The shared address manager must advance to the next output point only when all `6` lanes have:
+  - `out_valid=1`
+  - downstream `wr_ready=1`
+  - committed the current output point on the same cycle
+- The top-level aggregate `weight_loaded` is high only when all `6` lanes have completed weight load.
+- The top-level aggregate `out_valid` represents a synchronized `6`-lane result point, not a single-lane early result.
+
+### Good Pattern
+
+```verilog
+assign all_conv_in_ready = &lane_in_ready_vec;
+assign all_lane_out_valid = &lane_out_valid_vec;
+assign all_lane_ofmap_wr_ready = &lane_ofmap_wr_ready_vec;
+
+assign all_lane_commit_fire = out_ready
+                           && l1_wr_addr_valid
+                           && all_lane_out_valid
+                           && all_lane_ofmap_wr_ready;
+
+l1_addr_mgr u_l1_addr_mgr(
+    .out_fire(all_lane_commit_fire)
+);
+```
+
+### Wrong Pattern
+
+- Do not instantiate `6` separate spatial window address managers for first-layer `Cin=1`.
+- Do not allow lane 0 to advance the output write address before the other `5` lanes commit the same output point.
+- Do not couple output-channel counting into `conv_l1`.
+- Do not let each lane fetch its own image window independently in this first baseline.
+
+### Tests Required
+
+- Load all `6` lanes with valid weight groups, then confirm aggregate `weight_loaded=1`.
+- Run one full `24x24` scan and confirm aggregate `out_cnt=576`.
+- Confirm lane 0 still matches the PC golden feature-map file exactly.
+- Confirm every lane output buffer becomes frame-valid after the full scan.
+- Confirm each lane buffer can be read back independently and released with its own `rd_done`.
+
+---
+
+## Scenario: First-Layer 6-Lane Shared-Read / Per-Lane-Write Top
+
+### 1. Scope / Trigger
+- Trigger: the first-layer baseline is upgraded from one convolution lane to `1 -> 6` output-channel parallelism.
+
+### 2. Signatures
+- Weight side:
+  - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`, `cfg_weight_lane`
+- Shared result-commit side:
+  - aggregate `out_valid`, aggregate `out_ready`
+  - `lane_out_valid[5:0]`
+  - `lane_ofmap_wr_ready[5:0]`
+- Output-buffer side:
+  - `lane_ofmap_frame_valid[5:0]`
+  - per-lane `rd_en`, `rd_addr2d`, `rd_valid`, `rd_data`, `rd_done`
+
+### 3. Contracts
+- The top broadcasts one window pixel stream to all `6` lanes.
+- `cfg_weight_lane` selects which lane accepts the current serialized weight beat.
+- A lane not selected by `cfg_weight_lane` must ignore that beat.
+- The aggregate output-point commit occurs only when all `6` lanes and all `6` downstream output buffers are ready on the same cycle.
+- `l1_addr_mgr.out_fire` is driven by this aggregate commit, not by any single lane.
+- Each lane output buffer stores one full `24x24` feature map for that lane.
+
+### 4. Validation & Error Matrix
+- advance address manager after only one lane commits -> lane-to-lane output coordinate skew
+- duplicate `l1_addr_mgr` per lane -> architectural duplication and control drift
+- lane accepts weights while not selected by `cfg_weight_lane` -> wrong kernel image
+- expose aggregate `weight_loaded=1` before all `6` lanes are loaded -> scan may start too early
+- write all lane outputs into one shared output buffer -> output-channel ownership violation
+
+### 5. Good/Base/Bad Cases
+- Good: one shared input frame is scanned once, and all `6` lanes consume the exact same pixel order while keeping separate weights and separate output buffers.
+- Base: TB may load the same `25` weights into all `6` lanes first, then verify all `6` output maps are identical.
+- Bad: lane 0 computes and writes immediately while the other lanes trail behind by one or more output points.
+
+### 6. Tests Required
+- Behavioral full-chain TB covering frame load, `6`-lane weight load, full scan, and per-lane readback.
+- Assertion/check points:
+  - aggregate `weight_loaded=1`
+  - aggregate `out_cnt=576`
+  - directed checkpoint `(4,12) -> 1158` on lane 0
+  - every lane readback equals the expected `24x24` golden matrix when all `6` lanes use the same weights
+  - each lane `rd_done` clears only its own `lane_ofmap_frame_valid`
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 某一路先写成功就推进下一输出点
+assign l1_out_fire = lane_out_valid[0] && lane_ofmap_wr_ready[0];
+```
+
+#### Correct
+```verilog
+// 6 路结果必须同拍提交后, 地址管理器才推进
+assign all_lane_commit_fire = out_ready
+                           && l1_wr_addr_valid
+                           && (&lane_out_valid)
+                           && (&lane_ofmap_wr_ready);
+```
+
+---
+
+## Scenario: First-Layer Minimal Full-Chain Top
+
+### 1. Scope / Trigger
+- Trigger: `my_cnnV4` now needs a first-layer bring-up top that connects image load, image buffer, spatial window scan, and serial convolution into one verifiable chain.
+
+### 2. Signatures
+- Top control inputs:
+  - `frame_start`, `scan_start`, `frame_release`
+- Top data inputs:
+  - `image_tdata`, `image_tvalid`
+  - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`
+- Top result outputs:
+  - `out_valid`, `out_data`
+- Top status outputs:
+  - `scan_ready`, `scan_busy`, `scan_done`, `img_frame_valid`, `weight_loaded`
+
+### 3. Contracts
+- `img_in_addr_mgr` owns only external image write traversal.
+- `img_in_buf` owns image storage and 2D-to-1D RAM translation.
+- `win_addr_mgr` owns only convolution spatial read traversal.
+- `l1_top` owns the handshake glue between `win_addr_mgr`, `img_in_buf`, and `conv_l1`.
+- `l1_top` may buffer one returned pixel before feeding `conv_l1`.
+- `scan_done` is asserted only after:
+  - the final window address stream has completed
+  - no read response remains pending
+  - no buffered pixel remains unconsumed
+  - `conv_l1` is idle and no held output remains
+
+### 4. Validation & Error Matrix
+- top exposes `image_tready=1` while write address path is not aligned -> image/address beat mismatch bug
+- top issues multiple read addresses while only one response slot exists -> pixel ordering corruption
+- top marks scan complete before buffered pixel or held result drains -> truncated layer output
+
+### 5. Good/Base/Bad Cases
+- Good: one top file contains only glue logic and keeps ownership boundaries of the four base modules intact.
+- Base: current TB loads the real image file, loads one weight set, scans the full `24x24` output map, and checks the directed golden window.
+- Bad: duplicate address generation inside the top or move BRAM ownership out of `img_in_buf`.
+
+### 6. Tests Required
+- Full-chain `l1_top_tb` behavioral simulation.
+- Assertions/checks for image load completion, weight load completion, `scan_ready`, `scan_done`, total output count `576`, and directed result `1158`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 顶层直接把窗口地址持续推进, 不管读回应和卷积接收
+assign win_addr_ready = scan_running;
+```
+
+#### Correct
+```verilog
+// 顶层在读回应和像素消费之间做单拍缓冲和流控
+assign win_addr_ready = scan_running
+                     && buf_frame_valid
+                     && !rd_pending
+                     && !pix_valid_reg
+                     && conv_in_ready;
 ```

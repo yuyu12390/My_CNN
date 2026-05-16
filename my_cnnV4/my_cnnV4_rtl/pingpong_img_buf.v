@@ -1,11 +1,11 @@
 `timescale 1ns / 1ns
 
-// 图像乒乓缓存模块
+// 特征图乒乓缓存模块
 module pingpong_img_buf
 #(
-    parameter DATA_WIDTH = 8,
-    parameter IMG_W = 28,
-    parameter IMG_H = 28,
+    parameter DATA_WIDTH = 32,
+    parameter IMG_W = 24,
+    parameter IMG_H = 24,
     parameter ROW_ADDR_WIDTH = 5,
     parameter COL_ADDR_WIDTH = 5,
     parameter ADDR2D_WIDTH = ROW_ADDR_WIDTH + COL_ADDR_WIDTH,
@@ -13,29 +13,29 @@ module pingpong_img_buf
     parameter ADDR_WIDTH = 10
 )
 (
-    input clk,                               // 时钟
-    input rstn,                              // 低有效复位
-    input wr_valid,                          // 写有效
-    input [DATA_WIDTH-1:0] wr_data,          // 写数据
-    input [ADDR2D_WIDTH-1:0] wr_addr2d,      // 写二维地址
-    input wr_last,                           // 一帧最后一个写数据
-    input rd_en,                             // 读使能
-    input [ADDR2D_WIDTH-1:0] rd_addr2d,      // 读二维地址
-    input rd_done,                           // 当前读帧结束
+    input  clk,                                 // 时钟
+    input  rstn,                                // 低有效复位
+    input  wr_valid,                            // 写有效
+    input  signed [DATA_WIDTH-1:0] wr_data,     // 写数据
+    input  [ADDR2D_WIDTH-1:0] wr_addr2d,        // 写二维地址
+    input  wr_last,                             // 一帧最后一个写数据
+    input  rd_en,                               // 读使能
+    input  [ADDR2D_WIDTH-1:0] rd_addr2d,        // 读二维地址
+    input  rd_done,                             // 当前读帧结束
 
-    output wr_ready,                         // 写准备好
-    output reg wr_done,                      // 当前写帧结束脉冲
-    output reg [DATA_WIDTH-1:0] rd_data,     // 读数据
-    output reg rd_valid,                     // 读数据有效
-    output reg rd_frame_valid,               // 当前读bank有效
-    output reg wr_bank_sel,                  // 当前写bank选择
-    output reg rd_bank_sel,                  // 当前读bank选择
-    output reg bank0_valid,                  // bank0有效标志
-    output reg bank1_valid                   // bank1有效标志
+    output wr_ready,                            // 写准备好
+    output reg wr_done,                         // 当前写帧结束脉冲
+    output reg signed [DATA_WIDTH-1:0] rd_data, // 读数据
+    output reg rd_valid,                        // 读数据有效
+    output reg rd_frame_valid,                  // 当前读bank有效
+    output reg wr_bank_sel,                     // 当前写bank选择
+    output reg rd_bank_sel,                     // 当前读bank选择
+    output reg bank0_valid,                     // bank0有效标志
+    output reg bank1_valid                      // bank1有效标志
 );
 
-    reg [DATA_WIDTH-1:0] bank0 [0:DEPTH-1];
-    reg [DATA_WIDTH-1:0] bank1 [0:DEPTH-1];
+    reg signed [DATA_WIDTH-1:0] bank0 [0:DEPTH-1];
+    reg signed [DATA_WIDTH-1:0] bank1 [0:DEPTH-1];
     reg wr_busy;
 
     wire [ROW_ADDR_WIDTH-1:0] wr_row;

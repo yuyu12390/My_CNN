@@ -3,25 +3,25 @@
 module pingpong_img_buf_tb;
 
     localparam integer CLK_PERIOD = 20;
-    localparam integer IMAGE_W = 28;
-    localparam integer IMAGE_H = 28;
+    localparam integer DATA_WIDTH = 32;
+    localparam integer IMAGE_W = 24;
+    localparam integer IMAGE_H = 24;
     localparam integer IMAGE_LEN = IMAGE_W * IMAGE_H;
     localparam integer ROW_ADDR_WIDTH = 5;
     localparam integer COL_ADDR_WIDTH = 5;
     localparam integer ADDR2D_WIDTH = ROW_ADDR_WIDTH + COL_ADDR_WIDTH;
-    localparam IMAGE_FILE = "C:/Users/28010/Desktop/my_cnn/test/0.txt";
 
     reg clk;
     reg rstn;
     reg wr_valid;
-    reg [7:0] wr_data;
+    reg signed [DATA_WIDTH-1:0] wr_data;
     reg [ADDR2D_WIDTH-1:0] wr_addr2d;
     reg wr_last;
     wire wr_ready;
     wire wr_done;
     reg rd_en;
     reg [ADDR2D_WIDTH-1:0] rd_addr2d;
-    wire [7:0] rd_data;
+    wire signed [DATA_WIDTH-1:0] rd_data;
     wire rd_valid;
     reg rd_done;
     wire rd_frame_valid;
@@ -30,15 +30,22 @@ module pingpong_img_buf_tb;
     wire bank0_valid;
     wire bank1_valid;
 
-    reg [7:0] frame0 [0:IMAGE_LEN-1];
-    reg [7:0] frame1 [0:IMAGE_LEN-1];
+    reg signed [DATA_WIDTH-1:0] frame0 [0:IMAGE_LEN-1];
+    reg signed [DATA_WIDTH-1:0] frame1 [0:IMAGE_LEN-1];
 
-    integer fp_img;
-    integer rc;
     integer i;
     integer err_cnt;
 
-    pingpong_img_buf dut(
+    pingpong_img_buf #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .IMG_W(IMAGE_W),
+        .IMG_H(IMAGE_H),
+        .ROW_ADDR_WIDTH(ROW_ADDR_WIDTH),
+        .COL_ADDR_WIDTH(COL_ADDR_WIDTH),
+        .ADDR2D_WIDTH(ADDR2D_WIDTH),
+        .DEPTH(IMAGE_LEN),
+        .ADDR_WIDTH(10)
+    ) dut(
         .clk(clk),
         .rstn(rstn),
         .wr_valid(wr_valid),
@@ -65,7 +72,7 @@ module pingpong_img_buf_tb;
         clk = 1'b0;
         rstn = 1'b0;
         wr_valid = 1'b0;
-        wr_data = 8'd0;
+        wr_data = 'd0;
         wr_addr2d = {ADDR2D_WIDTH{1'b0}};
         wr_last = 1'b0;
         rd_en = 1'b0;
@@ -73,22 +80,10 @@ module pingpong_img_buf_tb;
         rd_done = 1'b0;
         err_cnt = 0;
 
-        fp_img = $fopen(IMAGE_FILE, "r");
-        if(fp_img == 0) begin
-            $display("ERROR: failed to open %s", IMAGE_FILE);
-            $finish;
-        end
-
         for(i = 0; i < IMAGE_LEN; i = i + 1) begin
-            rc = $fscanf(fp_img, "%b", frame0[i]);
-            if(rc != 1) begin
-                $display("ERROR: image preload failed at line %0d", i);
-                $finish;
-            end
-            frame1[i] = (frame0[i] == 8'd127) ? 8'd0 : (frame0[i] + 1'b1);
+            frame0[i] = (i * 3) - 400;
+            frame1[i] = 700 - (i * 5);
         end
-
-        $fclose(fp_img);
 
         #40;
         rstn = 1'b1;
@@ -151,7 +146,7 @@ module pingpong_img_buf_tb;
                 end
             end
             wr_valid = 1'b0;
-            wr_data = 8'd0;
+            wr_data = 'd0;
             wr_addr2d = {ADDR2D_WIDTH{1'b0}};
             wr_last = 1'b0;
             wait(wr_done == 1'b1);
@@ -188,7 +183,7 @@ module pingpong_img_buf_tb;
                 @(negedge clk);
             end
             wr_valid = 1'b0;
-            wr_data = 8'd0;
+            wr_data = 'd0;
             wr_addr2d = {ADDR2D_WIDTH{1'b0}};
             wr_last = 1'b0;
             wait(wr_done == 1'b1);
@@ -202,7 +197,7 @@ module pingpong_img_buf_tb;
         integer row;
         integer col;
         integer idx;
-        reg [7:0] expect_data;
+        reg signed [DATA_WIDTH-1:0] expect_data;
         begin
             wait(rd_frame_valid == 1'b1);
             for(row = 0; row < IMAGE_H; row = row + 1) begin
