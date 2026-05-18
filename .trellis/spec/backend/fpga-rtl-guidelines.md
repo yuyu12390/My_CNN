@@ -114,7 +114,7 @@ pingpong_img_buf u_buf(
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// V4 »º³åÄ£¿éÄÚ²¿×Ô¼ºÍÆÏÂÒ»¸öĞ´µØÖ·
+// V4 ç¼“å†²æ¨¡å—å†…éƒ¨è‡ªå·±æ¨ä¸‹ä¸€ä¸ªå†™åœ°å€
 reg [9:0] wr_addr;
 always @(posedge clk) begin
     if(wr_fire) begin
@@ -126,7 +126,7 @@ end
 
 #### Correct
 ```verilog
-// V4 ÓÉÍâ²¿µØÖ·¹ÜÀíÆ÷ÏÔÊ½¸øÆ´½Ó¶şÎ¬µØÖ·
+// V4 ç”±å¤–éƒ¨åœ°å€ç®¡ç†å™¨æ˜¾å¼ç»™æ‹¼æ¥äºŒç»´åœ°å€
 wire [4:0] wr_row;
 wire [4:0] wr_col;
 wire [9:0] wr_addr_1d;
@@ -178,14 +178,14 @@ end
 ```verilog
 module example_mod
 (
-    input  clk,          // Ê±ÖÓ
-    input  rstn,         // µÍÓĞĞ§¸´Î»
-    input  in_valid,     // ÊäÈëÓĞĞ§
-    input  [7:0] in_data,// ÊäÈëÊı¾İ
+    input  clk,          // æ—¶é’Ÿ
+    input  rstn,         // ä½æœ‰æ•ˆå¤ä½
+    input  in_valid,     // è¾“å…¥æœ‰æ•ˆ
+    input  [7:0] in_data,// è¾“å…¥æ•°æ®
 
-    output in_ready,     // ÊäÈë×¼±¸ºÃ
-    output out_valid,    // Êä³öÓĞĞ§
-    output [7:0] out_data// Êä³öÊı¾İ
+    output in_ready,     // è¾“å…¥å‡†å¤‡å¥½
+    output out_valid,    // è¾“å‡ºæœ‰æ•ˆ
+    output [7:0] out_data// è¾“å‡ºæ•°æ®
 );
 ```
 
@@ -253,7 +253,7 @@ module example_mod
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// Ã¿À´Ò»¸ö´°¿Ú¾ÍÇĞ»»Ò»´Îbank
+// æ¯æ¥ä¸€ä¸ªçª—å£å°±åˆ‡æ¢ä¸€æ¬¡bank
 always @(posedge clk) begin
     if(window_done) begin
         bank_sel <= ~bank_sel;
@@ -263,9 +263,9 @@ end
 
 #### Correct
 ```verilog
-// Ö»ÓĞÍêÕûÌØÕ÷Í¼ÊÂÎñ½áÊøºó£¬bank½ÇÉ«²ÅÔÊĞíÇĞ»»
+// åªæœ‰å®Œæ•´ç‰¹å¾å›¾äº‹åŠ¡ç»“æŸåï¼Œbankè§’è‰²æ‰å…è®¸åˆ‡æ¢
 assign wr_frame_done = wr_fire && wr_last;
-// rd_done ÓÉÏÂÒ»¼¶ÔÚ¶ÁÍêÕûÖ¡/ÍêÕûÌØÕ÷Í¼ºóÏÔÊ½¸ø³ö
+// rd_done ç”±ä¸‹ä¸€çº§åœ¨è¯»å®Œæ•´å¸§/å®Œæ•´ç‰¹å¾å›¾åæ˜¾å¼ç»™å‡º
 ```
 
 ---
@@ -316,7 +316,7 @@ assign wr_frame_done = wr_fire && wr_last;
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// ¾í»ıºËÄÚ²¿×Ô¼ºÈ¥±éÀúÍ¼Ïñ»º´æµØÖ·
+// å·ç§¯æ ¸å†…éƒ¨è‡ªå·±å»éå†å›¾åƒç¼“å­˜åœ°å€
 always @(posedge clk) begin
     if(start_conv) begin
         rd_addr2d <= rd_addr2d + 1'b1;
@@ -326,7 +326,7 @@ end
 
 #### Correct
 ```verilog
-// ¾í»ıºËÖ»³ÔÉÏÓÎÕûÀíºÃµÄÏñËØÁ÷
+// å·ç§¯æ ¸åªåƒä¸Šæ¸¸æ•´ç†å¥½çš„åƒç´ æµ
 assign in_fire = in_valid && in_ready;
 
 always @(posedge clk) begin
@@ -440,7 +440,7 @@ assign wr_addr_1d = (wr_row * IMG_W) + wr_col;
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// Ö»×öÊı¾İ¶ÔÆë, ²»´øRAM
+// åªåšæ•°æ®å¯¹é½, ä¸å¸¦RAM
 assign wr_addr2d = addr2d;
 ```
 
@@ -506,7 +506,7 @@ end
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// ¾í»ıºËÄÚ²¿×Ô¼º¿ØÖÆ BRAM µØÖ·
+// å·ç§¯æ ¸å†…éƒ¨è‡ªå·±æ§åˆ¶ BRAM åœ°å€
 always @(posedge clk) begin
     if(start_conv) begin
         rd_addr <= rd_addr + 1'b1;
@@ -516,7 +516,7 @@ end
 
 #### Correct
 ```verilog
-// Íâ²¿Ä£¿éËÍÈëÏñËØÁ÷, ¾í»ıºËÖ»×ö³Ë¼ÓºÍÎÕÊÖ
+// å¤–éƒ¨æ¨¡å—é€å…¥åƒç´ æµ, å·ç§¯æ ¸åªåšä¹˜åŠ å’Œæ¡æ‰‹
 assign in_fire = in_valid && in_ready;
 assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 ```
@@ -597,7 +597,7 @@ assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// TB ÄÚ²¿×Ô¼ºÔÙËãÒ»±é»Æ½ğÖµ
+// TB å†…éƒ¨è‡ªå·±å†ç®—ä¸€éé»„é‡‘å€¼
 for(i = 0; i < WIN_SIZE; i = i + 1) begin
     exp_sum = exp_sum + ($signed({1'b0, window_pix[i]}) * weight_mem[i]);
 end
@@ -605,7 +605,7 @@ end
 
 #### Correct
 ```verilog
-// TB Ö±½Ó¶ÁÈ¡ PC ²àÉú³ÉµÄ»Æ½ğ½á¹û
+// TB ç›´æ¥è¯»å– PC ä¾§ç”Ÿæˆçš„é»„é‡‘ç»“æœ
 fp_result = $fopen(RESULT_FILE, "r");
 rc = $fscanf(fp_result, "%d", exp_sum);
 ```
@@ -722,7 +722,7 @@ win_addr_mgr #(
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// °ÑÊä³öÍ¨µÀÊıÒ²ñîºÏ½ø´°¿ÚµØÖ·Ä£¿é
+// æŠŠè¾“å‡ºé€šé“æ•°ä¹Ÿè€¦åˆè¿›çª—å£åœ°å€æ¨¡å—
 for(i = 0; i < 6; i = i + 1) begin
     addr2d_ch[i] <= addr2d_ch[i] + 1'b1;
 end
@@ -730,7 +730,7 @@ end
 
 #### Correct
 ```verilog
-// Ö»Éú³ÉÒ»Ì×¿Õ¼äµØÖ·, ÓÉÉÏ²ã¹ã²¥µ½¶à¸ö¾í»ıºË»ò¶à¸ö»º´æ
+// åªç”Ÿæˆä¸€å¥—ç©ºé—´åœ°å€, ç”±ä¸Šå±‚å¹¿æ’­åˆ°å¤šä¸ªå·ç§¯æ ¸æˆ–å¤šä¸ªç¼“å­˜
 assign img_rd_addr2d = win_addr2d;
 assign lane0_addr2d = win_addr2d;
 assign lane1_addr2d = win_addr2d;
@@ -1011,13 +1011,13 @@ l1_addr_mgr u_l1_addr_mgr(
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// Ä³Ò»Â·ÏÈĞ´³É¹¦¾ÍÍÆ½øÏÂÒ»Êä³öµã
+// æŸä¸€è·¯å…ˆå†™æˆåŠŸå°±æ¨è¿›ä¸‹ä¸€è¾“å‡ºç‚¹
 assign l1_out_fire = lane_out_valid[0] && lane_ofmap_wr_ready[0];
 ```
 
 #### Correct
 ```verilog
-// 6 Â·½á¹û±ØĞëÍ¬ÅÄÌá½»ºó, µØÖ·¹ÜÀíÆ÷²ÅÍÆ½ø
+// 6 è·¯ç»“æœå¿…é¡»åŒæ‹æäº¤å, åœ°å€ç®¡ç†å™¨æ‰æ¨è¿›
 assign all_lane_commit_fire = out_ready
                            && l1_wr_addr_valid
                            && (&lane_out_valid)
@@ -1125,13 +1125,13 @@ assign lane_cfg_weight_last = lane_cfg_weight_valid && (cur_weight_idx == WIN_SI
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// Íâ²¿»¹ÒªÊÖĞ´ lane ±àºÅ, °ü×°²ãĞÎÍ¬ĞéÉè
+// å¤–éƒ¨è¿˜è¦æ‰‹å†™ lane ç¼–å·, åŒ…è£…å±‚å½¢åŒè™šè®¾
 assign top_cfg_weight_lane = ext_cfg_weight_lane;
 ```
 
 #### Correct
 ```verilog
-// °ü×°²ãÄÚ²¿×Ô¶¯°Ñ´®ĞĞÈ¨ÖØÁ÷²ğ¸ø 6 Â·¾í»ıºË
+// åŒ…è£…å±‚å†…éƒ¨è‡ªåŠ¨æŠŠä¸²è¡Œæƒé‡æµæ‹†ç»™ 6 è·¯å·ç§¯æ ¸
 l1_wgt_dist u_l1_wgt_dist (
     .cfg_weight_valid(cfg_weight_valid),
     .lane_cfg_weight_lane(dist_cfg_weight_lane)
@@ -1196,9 +1196,9 @@ l1_wgt_dist u_l1_wgt_dist (
 ### Good Pattern
 
 ```verilog
-// È«¾ÖÈ¨ÖØÄ¿±ê²ÉÓÃÂß¼­¶şÎ¬±àºÅ
-// µÚÒ»²ã: (0,0) ~ (0,5)
-// µÚ¶ş²ã: (1,0) ~ (1,11)
+// å…¨å±€æƒé‡ç›®æ ‡é‡‡ç”¨é€»è¾‘äºŒç»´ç¼–å·
+// ç¬¬ä¸€å±‚: (0,0) ~ (0,5)
+// ç¬¬äºŒå±‚: (1,0) ~ (1,11)
 assign weight_dst2d = {layer_id, kernel_id};
 ```
 
@@ -1302,16 +1302,16 @@ assign scan_ready = img_frame_valid
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// µÚÒ»²ãºÍµÚ¶ş²ã¸÷×Ô¶¨ÒåÎŞ¹Ø±àºÅ, ¶¥²ãÎŞ·¨Í³Ò»µ÷¶È
+// ç¬¬ä¸€å±‚å’Œç¬¬äºŒå±‚å„è‡ªå®šä¹‰æ— å…³ç¼–å·, é¡¶å±‚æ— æ³•ç»Ÿä¸€è°ƒåº¦
 assign l1_lane_id = ext_lane_id;
 assign l2_kernel_id = ext_kernel_id_other_rule;
 ```
 
 #### Correct
 ```verilog
-// ¶¥²ãÍ³Ò»Ê¹ÓÃÂß¼­¶şÎ¬Ä¿±ê±àºÅ
+// é¡¶å±‚ç»Ÿä¸€ä½¿ç”¨é€»è¾‘äºŒç»´ç›®æ ‡ç¼–å·
 assign weight_dst2d = {layer_id, kernel_id};
-// ¸÷²ã°ü×°Ä£¿éÔÙ°ÑËü·­Òë³É¸÷×Ô±¾µØÑ¡Ôñ
+// å„å±‚åŒ…è£…æ¨¡å—å†æŠŠå®ƒç¿»è¯‘æˆå„è‡ªæœ¬åœ°é€‰æ‹©
 ```
 
 ---
@@ -1374,7 +1374,7 @@ assign weight_dst2d = {layer_id, kernel_id};
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// ²»Çø·Ö²ãºÅ, Ö±½Ó°ÑÈ«¾ÖÈ¨ÖØÁ÷ËÍ½øµÚÒ»²ã
+// ä¸åŒºåˆ†å±‚å·, ç›´æ¥æŠŠå…¨å±€æƒé‡æµé€è¿›ç¬¬ä¸€å±‚
 assign l1_cfg_weight_valid = gw_weight_valid;
 assign l1_cfg_weight_last  = gw_dst_last;
 assign l1_cfg_weight_lane  = gw_weight_dst2d[KERNEL_ID_WIDTH-1:0];
@@ -1382,7 +1382,7 @@ assign l1_cfg_weight_lane  = gw_weight_dst2d[KERNEL_ID_WIDTH-1:0];
 
 #### Correct
 ```verilog
-// Ö»ÓĞµÚÒ»²ãÂß¼­Ä¿±ê²ÅÔÊĞí½øÈë l1_top
+// åªæœ‰ç¬¬ä¸€å±‚é€»è¾‘ç›®æ ‡æ‰å…è®¸è¿›å…¥ l1_top
 assign gw_is_l1_target = (gw_layer_id == LAYER0_ID) && (gw_kernel_id < L0_KERNEL_NUM);
 assign l1_cfg_weight_valid = gw_weight_valid && gw_is_l1_target;
 assign l1_cfg_weight_last  = gw_dst_last && gw_is_l1_target;
@@ -1392,10 +1392,10 @@ assign gw_weight_ready     = gw_is_l1_target ? l1_cfg_weight_ready : 1'b1;
 
 ---
 
-## Scenario: First-Layer Minimal Full-Chain Top
+## Scenario: First-Layer Production Top Uses Minimal Integration Interface
 
 ### 1. Scope / Trigger
-- Trigger: `my_cnnV4` now needs a first-layer bring-up top that connects image load, image buffer, spatial window scan, and serial convolution into one verifiable chain.
+- Trigger: the first-layer full chain is already verified, so `l1_top` must now serve as the formal integration boundary for later layers instead of continuing to expose bring-up-only debug signals.
 
 ### 2. Signatures
 - Top control inputs:
@@ -1403,61 +1403,277 @@ assign gw_weight_ready     = gw_is_l1_target ? l1_cfg_weight_ready : 1'b1;
 - Top data inputs:
   - `image_tdata`, `image_tvalid`
   - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`
-- Top result outputs:
-  - `out_valid`, `out_data`
+- Downstream feature-map read inputs:
+  - `ofmap_rd_en`, `ofmap_rd_addr2d`, `ofmap_rd_done`
 - Top status outputs:
-  - `scan_ready`, `scan_busy`, `scan_done`, `img_frame_valid`, `weight_loaded`
+  - `cfg_weight_ready`, `cfg_weight_done`, `cfg_last_err`
+  - `image_tready`, `scan_ready`, `img_frame_valid`, `weight_loaded`, `scan_busy`, `scan_done`
+- Top output-feature-map outputs:
+  - `ofmap_frame_valid`, `ofmap_rd_data`, `ofmap_rd_valid`
 
 ### 3. Contracts
 - `img_in_addr_mgr` owns only external image write traversal.
 - `img_in_buf` owns image storage and 2D-to-1D RAM translation.
-- `win_addr_mgr` owns only convolution spatial read traversal.
-- `l1_top` owns the handshake glue between `win_addr_mgr`, `img_in_buf`, and `conv_l1`.
-- `l1_top` may buffer one returned pixel before feeding `conv_l1`.
-- `scan_done` is asserted only after:
-  - the final window address stream has completed
-  - no read response remains pending
-  - no buffered pixel remains unconsumed
-  - `conv_l1` is idle and no held output remains
+- `l1_addr_mgr` owns convolution spatial read traversal and output-point write traversal.
+- `l1_core` owns the internal glue among image-buffer reads, six serial convolution lanes, and six output ping-pong buffers.
+- Production-facing `l1_top` must not export verification-only ports such as:
+  - `dbg_*`
+  - `lane_cfg_weight_*`
+  - `lane_conv_busy`
+  - `lane_out_*`
+  - direct internal compute stream ports like `out_valid` and `out_data`
+- The current formal first-layer boundary is buffer-based:
+  - later stages read results only through `ofmap_rd_*`
+  - `l1_top` ties internal `l1_core.out_ready` high and does not re-export the internal result stream
+- Testbenches may still observe hierarchical internal nodes for verification convenience, but those hierarchical names are not part of the production top contract.
+- `scan_ready` must stay low until:
+  - one full input frame is valid
+  - all six first-layer kernels report `weight_loaded`
+  - global preload has completed
 
 ### 4. Validation & Error Matrix
-- top exposes `image_tready=1` while write address path is not aligned -> image/address beat mismatch bug
-- top issues multiple read addresses while only one response slot exists -> pixel ordering corruption
-- top marks scan complete before buffered pixel or held result drains -> truncated layer output
+- re-expose `dbg_*` or lane-local internal status on `l1_top` -> top-level coupling regression
+- downstream logic depends on internal conv result pulses instead of `ofmap_rd_*` -> layer-boundary contract violation
+- `scan_ready=1` before global preload completion -> compute may start before startup preload finishes
+- duplicate address generation inside `l1_top` instead of using `img_in_addr_mgr` or `l1_addr_mgr` -> ownership drift
 
 ### 5. Good/Base/Bad Cases
-- Good: one top file contains only glue logic and keeps ownership boundaries of the four base modules intact.
-- Base: current TB loads the real image file, loads one weight set, scans the full `24x24` output map, and checks the directed golden window.
-- Bad: duplicate address generation inside the top or move BRAM ownership out of `img_in_buf`.
+- Good: later modules treat `l1_top` as a six-lane feature-map producer with readable output buffers and do not depend on internal debug behavior.
+- Base: `l1_top_tb` uses hierarchical references only for console trace and comparison, while the formal `l1_top` interface remains minimal.
+- Bad: keep bring-up-only ports on `l1_top` forever and let later layers wire against internal debug or internal conv result pulses.
 
 ### 6. Tests Required
-- Full-chain `l1_top_tb` behavioral simulation.
-- Assertions/checks for image load completion, weight load completion, `scan_ready`, `scan_done`, total output count `576`, and directed result `1158`.
+- Full-chain `l1_top_tb` behavioral simulation must still end with:
+  - `SUMMARY: err_cnt=0 out_cnt=576 target_seen=1`
+- TB must still confirm:
+  - `cfg_last_err=0`
+  - `cfg_weight_done` pulse observed
+  - all six `ofmap_frame_valid` bits assert after one full scan
+  - each lane clears its own `ofmap_frame_valid` after corresponding `ofmap_rd_done`
+  - directed window `idx=108 row=4 col=12` still matches lane0 result `59976`
 
 ### 7. Wrong vs Correct
 #### Wrong
 ```verilog
-// ¶¥²ãÖ±½Ó°Ñ´°¿ÚµØÖ·³ÖĞøÍÆ½ø, ²»¹Ü¶Á»ØÓ¦ºÍ¾í»ı½ÓÊÕ
-assign win_addr_ready = scan_running;
+module l1_top(
+    output out_valid,
+    output signed [31:0] out_data,
+    output [9:0] dbg_win_addr2d,
+    output [191:0] lane_out_data
+);
 ```
 
 #### Correct
 ```verilog
-// ¶¥²ãÔÚ¶Á»ØÓ¦ºÍÏñËØÏû·ÑÖ®¼ä×öµ¥ÅÄ»º³åºÍÁ÷¿Ø
-assign win_addr_ready = scan_running
-                     && buf_frame_valid
-                     && !rd_pending
-                     && !pix_valid_reg
-                     && conv_in_ready;
+module l1_top(
+    input  frame_start,
+    input  scan_start,
+    input  frame_release,
+    input  [5:0] ofmap_rd_en,
+    input  [59:0] ofmap_rd_addr2d,
+    input  [5:0] ofmap_rd_done,
+    output scan_ready,
+    output img_frame_valid,
+    output weight_loaded,
+    output [5:0] ofmap_frame_valid,
+    output signed [191:0] ofmap_rd_data,
+    output [5:0] ofmap_rd_valid
+);
 ```
 
+
+
+
+---
+
+## Scenario: Compute Kernels Must Not Re-Own Address Generation
+
+### 1. Scope / Trigger
+- Trigger: later CNN stages such as `relu_pool` may be tempting to expose upstream read-address ports directly from the compute module, even though the project already established separate address-manager ownership for `conv_l1` and layer wrappers.
+
+### 2. Signatures
+- Compute-kernel style interface:
+  - data side only: `in_valid`, `in_data`, `in_last`, `out_valid`, `out_data`, `out_ready`
+- Address-manager / wrapper side:
+  - read address generation: `rd_en`, `rd_addr2d`, `rd_done`
+  - write address generation: `wr_addr2d`, `wr_last`
+- Buffer side:
+  - storage and 2D-to-1D translation only
+
+### 3. Contracts
+- In this project, address generation belongs to dedicated address-manager modules or to a thin layer wrapper that instantiates those address managers.
+- Compute kernels such as `conv_l1` and future `relu_pool`-style arithmetic cores must not become the formal owner of upstream read addresses or downstream write addresses.
+- If one integrated bring-up module temporarily bundles address generation with compute for faster verification, that module is a transitional wrapper, not the final compute-kernel boundary.
+- The stable architectural split is:
+  - address manager decides which spatial coordinates are needed
+  - buffer converts packed 2D addresses to linear RAM indices and stores data
+  - compute kernel only consumes data stream beats and produces result stream beats
+- Later-stage wrappers may still expose address signals outward when they are acting as the orchestrating layer boundary, but the inner arithmetic kernel should remain address-agnostic.
+
+### 4. Validation & Error Matrix
+- arithmetic core exports `rd_addr2d` / `wr_addr2d` as part of its long-term public contract -> coupling regression against `conv_l1` style
+- both wrapper and compute kernel try to own spatial progression -> duplicated counters and state drift
+- buffer stops being a passive storage element and starts inferring traversal order -> ownership violation
+- later layer cannot reuse the same compute kernel under a different address schedule -> extensibility loss
+
+### 5. Good/Base/Bad Cases
+- Good: one wrapper instantiates `l1_addr_mgr`, drives buffer read addresses, streams returned pixels into a compute-only `relu_pool` kernel, and separately writes the pooled outputs to the next buffer.
+- Base: `relu_pool_l1` is allowed to exist as a wrapper-level integration block that instantiates `l1_addr_mgr`, a compute-only `relu_pool_core`, and the destination ping-pong buffer. The inner arithmetic kernel still remains address-agnostic.
+- Bad: copy the current interim interface into every future pool kernel and let each compute block directly own upstream read addresses.
+
+### 6. Tests Required
+- Architecture review must confirm compute-only kernels do not own BRAM traversal state.
+- When refactoring `relu_pool` into wrapper + kernel split, TB must still verify:
+  - same `12x12` pooled result map
+  - address traversal remains owned by the wrapper/address-manager path
+  - compute kernel can be reused under the same stream contract without buffer-specific ports
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+module relu_pool_core(
+    output rd_en,
+    output [9:0] rd_addr2d,
+    output rd_done,
+    output [9:0] wr_addr2d
+);
+```
+
+#### Correct
+```verilog
+module relu_pool_core(
+    input  in_valid,
+    input  signed [31:0] in_data,
+    input  in_last,
+    input  out_ready,
+    output in_ready,
+    output out_valid,
+    output signed [7:0] out_data
+);
+```
+
+---
+
+## Scenario: Pooling Reuses Generic Window Address Manager
+
+### 1. Scope / Trigger
+- Trigger: the single-channel `relu_pool_l1` stage needs `2x2 stride=2` window traversal, but the project already has a reusable `l1_addr_mgr` for generic window scanning.
+
+### 2. Signatures
+- Reused manager:
+  - `l1_addr_mgr`
+- Pool stage interface:
+  - source side: `src_rd_en`, `src_rd_addr2d`, `src_rd_valid`, `src_rd_data`
+  - output-buffer write side: `wr_valid`, `wr_addr2d`, `wr_last`, `wr_ready`
+- Reused manager outputs consumed by pool stage:
+  - `rd_addr_valid`, `rd_addr2d`, `rd_addr_last`
+  - `wr_addr_valid`, `wr_last`
+  - `cur_base_row`, `cur_base_col`
+
+### 3. Contracts
+- Pooling must reuse `l1_addr_mgr` for window read traversal when the behavior is still generic sliding-window traversal.
+- Do not create a second dedicated pool-only address manager when `IMG_W`, `IMG_H`, `K`, and `STRIDE` parameterization is sufficient.
+- For `2x2 stride=2` pooling over a `24x24` source map:
+  - read window bases are `0, 2, 4, ... , 22`
+  - output write coordinates are `0..11`
+- Therefore, the pool stage must not forward `l1_addr_mgr.wr_addr2d` directly into the output ping-pong buffer.
+- The pool stage must derive pooled output coordinates from the current base coordinate:
+  - `pool_wr_row = cur_base_row / STRIDE`
+  - `pool_wr_col = cur_base_col / STRIDE`
+  - `pool_wr_addr2d = {pool_wr_row, pool_wr_col}`
+- `wr_last` may still be reused directly from `l1_addr_mgr`, because frame completion order is unchanged.
+
+### 4. Validation & Error Matrix
+- instantiate a dedicated `pool_addr_mgr` that duplicates `l1_addr_mgr` traversal logic -> code reuse regression
+- connect `l1_addr_mgr.wr_addr2d` directly to the pool output buffer for `stride=2` pooling -> output addresses become `0,2,4...` and overflow the `12x12` map contract
+- derive pooled write coordinates from `rd_addr2d` instead of base coordinates -> write address may wobble inside one `2x2` window
+- reuse `wr_last` but change traversal order -> completion pulse may no longer align with final pooled output point
+
+### 5. Good/Base/Bad Cases
+- Good: `relu_pool_l1` reuses `l1_addr_mgr`, reads source windows at `(0,0)~(1,1)`, `(0,2)~(1,3)`, and writes pooled outputs to `(0,0)`, `(0,1)`, ... `(11,11)`.
+- Base: one generic address manager services both first-layer convolution and single-channel pooling with different parameter sets.
+- Bad: maintain one traversal module for convolution and another nearly identical traversal module for pooling.
+
+### 6. Tests Required
+- Behavioral TB must compile with `l1_addr_mgr.v` and without any `pool_addr_mgr.v` dependency.
+- `relu_pool_l1_tb` must still end with:
+  - `SUMMARY: err_cnt=0 done_seen=1 src_done_seen=1`
+- Console traces should show pooled write addresses covering the `12x12` output map in raster order.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+assign pool_wr_addr2d = pool_mgr_wr_addr2d;
+```
+
+#### Correct
+```verilog
+assign pool_wr_row = pool_base_row / STRIDE;
+assign pool_wr_col = pool_base_col / STRIDE;
+assign pool_wr_addr2d = {pool_wr_row, pool_wr_col};
+```
+
+---
+
+## Scenario: Layer Name Must Match Architectural Boundary
+
+### 1. Scope / Trigger
+- Trigger: the project started first-layer bring-up with names such as `relu_pool_l1` and `pool_l1_top`, but the user clarified that ReLU+pool belongs to the next layer boundary, not to `l1`.
+
+### 2. Signatures
+- Naming contract:
+  - first convolution layer only -> `l1_*`
+  - next ReLU+pool stage -> `l2_*`
+  - first-layer plus next-stage joint bring-up / integration -> `*_l1l2` or `l1l2_*`
+- Typical examples:
+  - single-stage compute / wrapper: `conv_l1`, `relu_pool_l2`
+  - same-stage top: `l1_top`, `l2_top`
+  - cross-stage integration TB/top: `l1l2_top`, `l1l2_top_tb`
+
+### 3. Contracts
+- In `my_cnnV4`, layer names must follow architectural ownership, not temporary bring-up order.
+- `l1` means the first convolution stage only.
+- ReLU+pool that consumes first-layer output and prepares the next stage input must be treated as `l2` naming space.
+- When one module or TB verifies the boundary from first convolution into ReLU+pool together, it must use `l1l2` naming rather than forcing everything under `l1`.
+- Transitional files that were already verified under older names may remain temporarily, but all future modules, TBs, and top-level wrappers must follow the corrected naming rule.
+
+### 4. Validation & Error Matrix
+- name a ReLU+pool wrapper as `*_l1` after this decision -> layer-boundary naming drift
+- use `l2_*` for a pure first-layer convolution-only block -> stage ownership confusion
+- use one stage-local name for a cross-stage integration TB -> hard to tell whether the TB is unit-level or boundary-level
+- rename old files immediately without need while active verification depends on them -> unnecessary churn risk
+
+### 5. Good/Base/Bad Cases
+- Good: future single-channel ReLU+pool wrapper is named `relu_pool_l2`, and a 6-lane first-conv plus pool integration TB is named `l1l2_top_tb`.
+- Base: already verified older file names may stay in place until the next intentional rename/refactor step, but new work must stop extending the old `relu_pool_l1` naming.
+- Bad: continue adding more `*_l1` pool modules and TBs after the architectural boundary was clarified.
+
+### 6. Tests Required
+- Review every new RTL/TB filename and module name added after this decision:
+  - first-conv-only stage must use `l1`
+  - relu+pool stage must use `l2`
+  - cross-stage integration must use `l1l2`
+- When old files are later renamed, the associated Vivado project entries and TB top-module settings must be updated together.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+module relu_pool_l1;
+module pool_l1_top_tb;
+```
+
+#### Correct
+```verilog
+module relu_pool_l2;
+module l1l2_top_tb;
+```
 
 ---
 
 ## Scenario: First-Layer Output Ping-Pong Buffer Must Infer BRAM
 
 ### 1. Scope / Trigger
-- Trigger: first-layer `6` Â·Êä³öÌØÕ÷Í¼»º´æ´Ó¼Ä´æÆ÷ÕóÁĞÊµÏÖÇĞ»»µ½ BRAM ÍÆ¶ÏÓÑºÃÊµÏÖ, ±ÜÃâ `24x24x32x2x6` ¹æÄ£±»×ÛºÏ³É´óÁ¿ LUT/FF.
+- Trigger: first-layer `6` è·¯è¾“å‡ºç‰¹å¾å›¾ç¼“å­˜ä»å¯„å­˜å™¨é˜µåˆ—å®ç°åˆ‡æ¢åˆ° BRAM æ¨æ–­å‹å¥½å®ç°, é¿å… `24x24x32x2x6` è§„æ¨¡è¢«ç»¼åˆæˆå¤§é‡ LUT/FF.
 
 ### 2. Signatures
 - Module:
@@ -1470,35 +1686,35 @@ assign win_addr_ready = scan_running
   - `rd_en`, `rd_addr2d`, `rd_data`, `rd_valid`, `rd_done`
 
 ### 3. Contracts
-- OutputÌØÕ÷Í¼Æ¹ÅÒ»º´æ±ØĞëÓÅÏÈÊµÏÖÎª¿éRAM, ²»ÄÜÄ¬ÈÏÒÀÀµ×ÛºÏÆ÷°ÑÆÕÍ¨¼Ä´æÆ÷Êı×é×Ô¶¯ÓÅ»¯³É¿É½ÓÊÜµÄ´æ´¢×ÊÔ´.
-- Á½¸öbank¶¼±ØĞëÊ¹ÓÃ BRAM ÍÆ¶ÏÓÑºÃĞ´·¨:
+- Outputç‰¹å¾å›¾ä¹’ä¹“ç¼“å­˜å¿…é¡»ä¼˜å…ˆå®ç°ä¸ºå—RAM, ä¸èƒ½é»˜è®¤ä¾èµ–ç»¼åˆå™¨æŠŠæ™®é€šå¯„å­˜å™¨æ•°ç»„è‡ªåŠ¨ä¼˜åŒ–æˆå¯æ¥å—çš„å­˜å‚¨èµ„æº.
+- ä¸¤ä¸ªbankéƒ½å¿…é¡»ä½¿ç”¨ BRAM æ¨æ–­å‹å¥½å†™æ³•:
   - `(* ram_style = "block" *) reg ... bank0 [...]`
   - `(* ram_style = "block" *) reg ... bank1 [...]`
-- ¶Á¿Ú±ØĞë±£³Öµ±Ç°ÏµÍ³ÒÑ¾­Ê¹ÓÃµÄµ¥ÅÄÍ¬²½¶Á½Ó¿Ú:
-  - Íâ²¿ÔÚµÚ `N` ÅÄ¸ø³ö `rd_en + rd_addr2d`
-  - Ä£¿éÔÚµÚ `N+1` ÅÄ¸ø³ö¶ÔÓ¦ `rd_data + rd_valid`
-- Ğ´¿ÚÈÔÓÉÍâ²¿¶şÎ¬µØÖ·ÏÔÊ½Çı¶¯, Ä£¿éÄÚ²¿Ö»×ö `row * IMG_W + col` ×ª»».
-- ²»ÄÜÎªÁËÊ¡ÊÂ°ÑÍêÕû `24x24x32` ÌØÕ÷Í¼bank×ÛºÏ³É´¥·¢Æ÷ÕóÁĞ.
+- è¯»å£å¿…é¡»ä¿æŒå½“å‰ç³»ç»Ÿå·²ç»ä½¿ç”¨çš„å•æ‹åŒæ­¥è¯»æ¥å£:
+  - å¤–éƒ¨åœ¨ç¬¬ `N` æ‹ç»™å‡º `rd_en + rd_addr2d`
+  - æ¨¡å—åœ¨ç¬¬ `N+1` æ‹ç»™å‡ºå¯¹åº” `rd_data + rd_valid`
+- å†™å£ä»ç”±å¤–éƒ¨äºŒç»´åœ°å€æ˜¾å¼é©±åŠ¨, æ¨¡å—å†…éƒ¨åªåš `row * IMG_W + col` è½¬æ¢.
+- ä¸èƒ½ä¸ºäº†çœäº‹æŠŠå®Œæ•´ `24x24x32` ç‰¹å¾å›¾bankç»¼åˆæˆè§¦å‘å™¨é˜µåˆ—.
 
 ### 4. Validation & Error Matrix
-- `pingpong_img_buf` ×ÛºÏºó `RAMB18/RAMB36 = 0` ÇÒ `FF/LUT` Òì³£ÅòÕÍ -> ÊÓÎªÊµÏÖ´íÎó
-- ĞŞ¸ÄÎªBRAM°æºó, `rd_valid` Ïà¶Ô¾É½Ó¿Ú¶àÍÏÒ»ÅÄ -> ÊÓÎª½Ó¿Ú»Ø¹é
-- ÎªÁËÍÆ¶ÏBRAM°Ñ¶Á¿Ú¸Ä³ÉÒì²½¶Á×éºÏÂß¼­ -> ÊÓÎª´íÎóĞ´·¨
-- ¶¥²ã×ÊÔ´±©ÕÇÇÒÖ÷ÒªÀ´Ô´Îª `FDRE` / `LUT6` ¶ø·Ç `RAMB18` -> ÓÅÏÈ¼ì²é `pingpong_img_buf` ÊÇ·ñÈÔÔÚ¼Ä´æÆ÷»¯
+- `pingpong_img_buf` ç»¼åˆå `RAMB18/RAMB36 = 0` ä¸” `FF/LUT` å¼‚å¸¸è†¨èƒ€ -> è§†ä¸ºå®ç°é”™è¯¯
+- ä¿®æ”¹ä¸ºBRAMç‰ˆå, `rd_valid` ç›¸å¯¹æ—§æ¥å£å¤šæ‹–ä¸€æ‹ -> è§†ä¸ºæ¥å£å›å½’
+- ä¸ºäº†æ¨æ–­BRAMæŠŠè¯»å£æ”¹æˆå¼‚æ­¥è¯»ç»„åˆé€»è¾‘ -> è§†ä¸ºé”™è¯¯å†™æ³•
+- é¡¶å±‚èµ„æºæš´æ¶¨ä¸”ä¸»è¦æ¥æºä¸º `FDRE` / `LUT6` è€Œé `RAMB18` -> ä¼˜å…ˆæ£€æŸ¥ `pingpong_img_buf` æ˜¯å¦ä»åœ¨å¯„å­˜å™¨åŒ–
 
 ### 5. Good/Base/Bad Cases
-- Good: `pingpong_img_buf` µÄÁ½¸öbank¶¼ÒÔ block RAM ÍÆ¶Ï, ¶¥²ã 6 Â·Êä³ö»º´æÖ÷ÒªÏûºÄ BRAM.
-- Base: Î¬³ÖÏÖÓĞÍâ²¿½Ó¿ÚºÍ TB Ê±Ğò, Ö»Ìæ»»ÄÚ²¿´æ´¢ÊµÏÖ.
-- Bad: ¼ÌĞøÊ¹ÓÃÆÕÍ¨ `reg [31:0] bank0 [0:575]` / `bank1 [0:575]` ²¢ÈÃ Vivado °ÑÕû¿éÊı¾İÌ¯³É¼Ä´æÆ÷.
+- Good: `pingpong_img_buf` çš„ä¸¤ä¸ªbankéƒ½ä»¥ block RAM æ¨æ–­, é¡¶å±‚ 6 è·¯è¾“å‡ºç¼“å­˜ä¸»è¦æ¶ˆè€— BRAM.
+- Base: ç»´æŒç°æœ‰å¤–éƒ¨æ¥å£å’Œ TB æ—¶åº, åªæ›¿æ¢å†…éƒ¨å­˜å‚¨å®ç°.
+- Bad: ç»§ç»­ä½¿ç”¨æ™®é€š `reg [31:0] bank0 [0:575]` / `bank1 [0:575]` å¹¶è®© Vivado æŠŠæ•´å—æ•°æ®æ‘Šæˆå¯„å­˜å™¨.
 
 ### 6. Tests Required
-- ĞĞÎª·ÂÕæ:
-  - ÏÖÓĞ `l1_top_tb` ±ØĞë¼ÌĞøÍ¨¹ı
-  - ¶ÏÑÔµã: `SUMMARY: err_cnt=0`
-- ×ÛºÏ¼ì²é:
-  - µ¥¶À×ÛºÏ `pingpong_img_buf` »òÍêÕû×ÛºÏ `l1_top`
-  - ¶ÏÑÔµã: Êä³ö»º´æÏà¹Ø×ÊÔ´¿ªÊ¼½øÈë `RAMB18/RAMB36`
-  - ¶ÏÑÔµã: ²»ÔÙ³öÏÖ´ËÇ°ÄÇÖÖ `FDRE` ¶şÊ®¶àÍò¼¶µÄÒì³£ÅòÕÍ
+- è¡Œä¸ºä»¿çœŸ:
+  - ç°æœ‰ `l1_top_tb` å¿…é¡»ç»§ç»­é€šè¿‡
+  - æ–­è¨€ç‚¹: `SUMMARY: err_cnt=0`
+- ç»¼åˆæ£€æŸ¥:
+  - å•ç‹¬ç»¼åˆ `pingpong_img_buf` æˆ–å®Œæ•´ç»¼åˆ `l1_top`
+  - æ–­è¨€ç‚¹: è¾“å‡ºç¼“å­˜ç›¸å…³èµ„æºå¼€å§‹è¿›å…¥ `RAMB18/RAMB36`
+  - æ–­è¨€ç‚¹: ä¸å†å‡ºç°æ­¤å‰é‚£ç§ `FDRE` äºŒåå¤šä¸‡çº§çš„å¼‚å¸¸è†¨èƒ€
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -1521,4 +1737,592 @@ always @(posedge clk) begin
     if(bank0_wr_fire) bank0[wr_addr_1d] <= wr_data;
     if(bank0_rd_fire) bank0_rd_data <= bank0[rd_addr_1d];
 end
+```
+
+---
+
+## Scenario: First-Layer Six-Lane Console Trace Must Match PC Golden Format
+
+### 1. Scope / Trigger
+- Trigger: first-layer bring-up now needs direct human-readable comparison between RTL simulation console output and PC-side six-lane convolution golden output.
+
+### 2. Signatures
+- RTL console trace:
+  - `SIM_WIN idx=<idx> row=<row> col=<col> lane0=<v0> ... lane5=<v5>`
+- PC golden trace:
+  - `PC_WIN idx=<idx> row=<row> col=<col> lane0=<v0> ... lane5=<v5>`
+
+### 3. Contracts
+- `l1_top_tb` must print one line per output window when `out_valid=1`.
+- Each printed line must contain:
+  - flattened output index `idx`
+  - output coordinates `row`, `col`
+  - all six first-layer lane results in fixed `lane0` to `lane5` order
+- The PC-side golden script must emit the same traversal order:
+  - raster order over the `24x24` output map
+  - same lane ordering `0..5`
+- The purpose of the prefix difference `SIM_WIN` vs `PC_WIN` is only source tagging; field order after that must remain aligned.
+
+### 4. Validation & Error Matrix
+- RTL prints only lane0 while PC generates six-lane output -> manual comparison becomes incomplete
+- RTL and PC use different window traversal order -> line-by-line comparison becomes misleading
+- RTL and PC use different lane ordering -> false mismatch during review
+
+### 5. Good/Base/Bad Cases
+- Good: `SIM_WIN idx=108 row=4 col=12 ...` and `PC_WIN idx=108 row=4 col=12 ...` differ only by prefix and match lane values.
+- Base: console traces are compared by eye or with a simple diff after prefix normalization.
+- Bad: one side prints matrix blocks while the other side prints flattened stream order with no shared indexing.
+
+### 6. Tests Required
+- `l1_top_tb` behavioral simulation must still end with `SUMMARY: err_cnt=0`.
+- PC golden script must generate:
+  - one six-lane full-map text file
+  - one line-by-line console-style text file
+
+---
+
+## Scenario: L1-L2 Joint Bring-Up Must Use PC + RTL Cross-Check On One Lane
+
+### 1. Scope / Trigger
+- Trigger: after `l1l2_top_tb` is behaviorally stable, the user wants one more verification layer: use the joint TB dataflow, then cross-check one selected lane against a PC-computed relu+pool result to confirm the upstream modules are numerically correct through the first two stages.
+
+### 2. Signatures
+- Joint simulation TB:
+  - `l1l2_top_tb`
+- Joint RTL path:
+  - `l1_top` -> `l2_top`
+- Compared result scope:
+  - one selected lane `lane_id`
+  - one full `12x12` pooled output map for that lane
+- Pass summary:
+  - `SUMMARY: err_cnt=0`
+
+### 3. Contracts
+- The verification source remains the joint integration TB, not a detached single-module TB.
+- The PC side must use:
+  - the same input image file as `l1l2_top_tb`
+  - the same first-layer weight file as `l1l2_top_tb`
+  - the same relu rule and right-shift quantization rule
+  - the same `2x2 stride=2` pooling traversal rule
+- The PC side must select one concrete lane and compute that lane's full `12x12` pooled map.
+- `l1l2_top_tb` must read back the same lane's pooled output map from RTL and compare point-by-point.
+- This check is not optional after joint bring-up is declared stable; it is the numerical truth check for the whole `l1 -> l2` path.
+
+### 4. Validation & Error Matrix
+- PC computes first-layer conv only while TB checks pooled output -> verification scope mismatch
+- PC and TB choose different lane indices -> false mismatch
+- PC uses different quantization or pooling order -> false mismatch
+- TB only checks `pool_done` / `frame_valid` and skips numerical comparison -> integration correctness remains unproven
+
+### 5. Good/Base/Bad Cases
+- Good: choose `lane0` (or any explicitly named lane), run PC to generate one `12x12` pooled golden map, then let `l1l2_top_tb` read back the same lane from RTL and confirm every point matches.
+- Base: one-lane numerical cross-check is sufficient for bring-up, while the other lanes are still covered by existing RTL internal checks and shared-path logic.
+- Bad: visually inspect waveforms only and conclude the whole two-stage path is correct without a PC numerical golden comparison.
+
+### 6. Tests Required
+- `l1l2_top_tb` must still end with:
+  - `SUMMARY: err_cnt=0`
+- One PC script or one PC calculation step must generate:
+  - one selected lane's `12x12` pooled golden result
+- The joint TB must compare:
+  - same lane index
+  - same raster-order `12x12` coordinates
+  - same pooled output values
+- Review record must state clearly:
+  - which lane was selected
+  - which input image file was used
+  - which weight file was used
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Run l1l2_top_tb, see pool_done=1, then assume l1+l2 is correct.
+```
+
+#### Correct
+```text
+Run l1l2_top_tb, choose one lane, compute the same lane's 12x12 relu+pool map on PC,
+then compare every output point and require SUMMARY: err_cnt=0.
+```
+- At least one directed window such as `idx=108 row=4 col=12` must be visually checkable across both outputs.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+$display("lane0=%0d", out_data);
+```
+
+#### Correct
+```verilog
+$display("SIM_WIN idx=%0d row=%0d col=%0d lane0=%0d lane1=%0d lane2=%0d lane3=%0d lane4=%0d lane5=%0d",
+         out_cnt,
+         out_cnt / OUT_W,
+         out_cnt % OUT_W,
+         pick_lane_out_data(0),
+         pick_lane_out_data(1),
+         pick_lane_out_data(2),
+         pick_lane_out_data(3),
+         pick_lane_out_data(4),
+         pick_lane_out_data(5));
+```
+
+---
+
+## Scenario: Third-Layer `6in12out` Reuses `72` First-Layer Conv Slices
+
+### 1. Scope / Trigger
+- Trigger: the project is moving from verified `l1 + l2` into the third convolution stage, and the chosen first implementation route is to reuse the existing `conv_l1` arithmetic slice directly instead of redesigning a new `6in1out` kernel first.
+
+### 2. Signatures
+- Reused arithmetic slice:
+  - `conv_l1`
+- Third-layer logical output grouping:
+  - `12` logical output kernels
+  - each logical output kernel consumes `6` input channels
+- Third-layer physical compute grouping:
+  - `12` groups
+  - each group contains `6` instances of `conv_l1`
+  - total physical slice count = `72`
+- Weight preload meaning:
+  - one logical third-layer output kernel owns `6 * 25 = 150` weights
+  - one physical `conv_l1` slice still owns only `25` weights
+
+### 3. Contracts
+- In current architecture, `conv_l1` is a `1in1out` serial `5x5` convolution slice, not a full `Cin x Cout` kernel.
+- Therefore, true third-layer `6in12out` must not be modeled as only `12` unchanged `conv_l1` instances.
+- The accepted first implementation is:
+  - one shared window-address traversal for the current spatial output point
+  - `6` parallel source feature-map reads for the `6` input channels
+  - `12` logical output groups in parallel
+  - inside each logical output group, `6` `conv_l1` slices consume the `6` channel streams
+  - one local adder combines the `6` partial sums into one final `32bit` output result for that output channel
+- Interface hierarchy must stay two-level:
+  - external / layer-facing view stays at `12` logical output kernels
+  - internal implementation may expand each logical output kernel into `6` physical `conv_l1` slices
+- Global weight preload should still keep the logical destination meaning:
+  - layer-local destination remains `12` output-kernel IDs
+  - local third-layer wrapper is responsible for splitting one logical `150`-weight block into `6` physical `25`-weight slice loads
+- Address-generation ownership must remain outside `conv_l1`.
+- The third-layer output buffer ownership should stay one buffer per logical output channel, not one buffer per physical slice.
+
+### 4. Validation & Error Matrix
+- instantiate only `12` unchanged `conv_l1` blocks and call that `6in12out` -> functionally incomplete, because each output channel misses `5` input-channel partial sums
+- expose `72` physical slice IDs directly as the long-term layer-facing top contract -> cross-layer weight and buffer ownership become harder to manage
+- give each physical slice its own spatial address manager -> duplicated control and channel-skew risk
+- store one physical slice result per buffer instead of summing `6` slices into one logical output -> wrong output feature-map meaning
+- push `6`-channel accumulation responsibility back into `conv_l1` without redesigning the module contract -> violates the chosen reuse-first route
+
+### 5. Good/Base/Bad Cases
+- Good: build one `l3_out_core` style wrapper that owns one logical output channel, instantiates `6` `conv_l1` slices, sums their results, and later replicate that wrapper `12` times.
+- Base: even before the full `12`-output top exists, verification may begin from one logical `6in1out` output core that proves the reuse route is numerically correct.
+- Bad: flatten the whole third layer directly into one `72`-instance unstructured top with no logical-output grouping.
+
+### 6. Tests Required
+- First verification step must target one logical output group:
+  - `6` source channels
+  - `6` physical `conv_l1` slices
+  - `1` summed output
+- Assertions/check points for that step:
+  - all `6` slices consume aligned window progress
+  - all `6` slice weight groups are independently loaded
+  - one logical output result equals the PC golden `6`-channel convolution sum
+- Full third-layer verification later must cover:
+  - `12` logical outputs
+  - total preload matching `12 * 6 * 25 = 1800` weights
+  - one output buffer per logical output channel
+  - no spatial skew among the `12` output channels
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+6in12out = instantiate 12 unchanged conv_l1 blocks
+```
+
+#### Correct
+```text
+6in12out = 12 logical output groups
+each logical output group = 6 unchanged conv_l1 slices + 1 local partial-sum combiner
+total physical conv_l1 count = 72
+```
+
+---
+
+## Scenario: Third-Layer `l3_core` Uses Shared Window Addressing With `12` Parallel Output Groups
+
+### 1. Scope / Trigger
+- Trigger: after `l3_out_core` is verified, the next bring-up stage is not the full system top yet, but a third-layer local integration block that connects `6` input feature-map buffers, one shared address manager, `12` parallel output groups, and `12` output ping-pong buffers.
+
+### 2. Signatures
+- Local integration block:
+  - `l3_core`
+- Upstream source side:
+  - `src_frame_valid[5:0]`
+  - `src_rd_en[5:0]`
+  - `src_rd_addr2d[5:0]`
+  - `src_rd_data[5:0]`
+  - `src_rd_valid[5:0]`
+  - `src_rd_done[5:0]`
+- Weight side:
+  - `cfg_weight_valid`
+  - `cfg_weight_data`
+  - `cfg_weight_last`
+  - `cfg_weight_out`
+  - `cfg_weight_cin`
+- Output side:
+  - `dst_frame_valid[11:0]`
+  - `dst_rd_en[11:0]`
+  - `dst_rd_addr2d[11:0]`
+  - `dst_rd_data[11:0]`
+  - `dst_rd_valid[11:0]`
+  - `dst_rd_done[11:0]`
+
+### 3. Contracts
+- `l3_core` is a layer-local integration core, not the final global wrapper for third-layer preload and cross-layer orchestration.
+- `l3_core` must reuse:
+  - one `l1_addr_mgr` parameterized for `12x12`, `K=5`, `stride=1`
+  - `12` instances of `l3_out_core`
+  - `12` instances of `pingpong_img_buf` for `8x8` signed `32bit` outputs
+- The shared address manager owns only one spatial traversal stream for the current window.
+- That one spatial address must be broadcast to all `6` upstream input feature-map buffers.
+- `l3_core` must wait until all `6` source buffers return valid data for the same requested address before broadcasting one `6`-lane pixel beat into the `12` output groups.
+- `l3_core` must wait until all `12` `l3_out_core` instances produce valid results and all `12` destination output buffers are writable before asserting one aggregate commit and advancing the shared address manager.
+- `src_rd_done` is a frame-level release signal for the `6` upstream source buffers and must assert only after the full `8x8` third-layer output map has completed for the current source-frame transaction.
+- `cfg_weight_out` selects which of the `12` logical output groups currently accepts weight beats.
+- `cfg_weight_cin` is forwarded into the selected `l3_out_core` and selects which of that output group's `6` internal conv slices currently accepts the beat.
+- `weight_loaded` at `l3_core` level means all `12` logical output groups report loaded, not just one output group.
+
+### 4. Validation & Error Matrix
+- let each source buffer receive a different traversal address in the same cycle -> input-channel spatial misalignment
+- broadcast source pixels into `12` output groups before all `6` source buffers return valid -> mixed-window data hazard
+- advance the shared address manager when only some output groups finished -> output-channel coordinate skew
+- pulse `src_rd_done` every window or every row instead of after the full map -> upstream frame released too early
+- treat `l3_core` as the final weight-routing owner and fold in unrelated global preload policy -> boundary coupling regression
+
+### 5. Good/Base/Bad Cases
+- Good: `l3_core` reads one `5x5` window position across all `6` input channels, feeds all `12` output groups in parallel, then writes one `8x8` output point into each of `12` output buffers.
+- Base: `l3_core_tb` may instantiate `6` local source ping-pong buffers, preload them with synthetic `12x12` maps, then verify all `12` `8x8` outputs against TB-side software convolution.
+- Bad: duplicate `l1_addr_mgr` twelve times and let each output group walk the source feature maps independently.
+
+### 6. Tests Required
+- `l3_core_tb` must verify:
+  - source side: all `6` source buffers become frame-valid before start
+  - preload side: `12 * 6 * 25` weights are accepted and `weight_loaded=1`
+  - run side: one full `8x8` scan completes and `done` pulses
+  - readback side: all `12 * 8 * 8` output points match TB-side expected results
+- Assertion points:
+  - `SUMMARY: err_cnt=0`
+  - `rd_cnt=64`
+  - `weight_loaded=1`
+  - completion pulse observed once for the run
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Third layer output group 0 and output group 1 may advance their write coordinates independently.
+```
+
+#### Correct
+```text
+All 12 third-layer output groups share one window traversal and commit one output coordinate together.
+```
+
+---
+
+## Scenario: Third-Layer `l3_top` Bridges Global Weight Stream Into Local `6x25` Slice Loads
+
+### 1. Scope / Trigger
+- Trigger: after `l3_core` is verified, the next bring-up stage adds a third-layer outer wrapper that accepts the existing global serialized weight stream and translates third-layer logical kernel weights into the local `cfg_weight_out + cfg_weight_cin + cfg_weight_last` contract required by `l3_core`.
+
+### 2. Signatures
+- Outer wrapper:
+  - `l3_top`
+- Global preload side:
+  - `cfg_weight_valid`
+  - `cfg_weight_data`
+  - `cfg_weight_last`
+  - `cfg_weight_ready`
+  - `cfg_weight_done`
+  - `cfg_last_err`
+- Local third-layer weight side:
+  - `cfg_weight_out`
+  - `cfg_weight_cin`
+  - `cfg_weight_last`
+- Run side:
+  - `start`
+  - `ready`
+  - `busy`
+  - `done`
+
+### 3. Contracts
+- `l3_top` is the layer-facing third-layer wrapper; `l3_core` remains the local compute-and-buffer integration core.
+- The current global weight stream still uses logical destination `{layer_id, kernel_id}` from `wgt_dist_global`.
+- At this stage:
+  - `layer_id=0` still represents first-layer `6 x 25` preload blocks
+  - `layer_id=1` represents third-layer logical output kernels, each with `150` weights
+- `l3_top` must accept only third-layer targets `(1,0) ~ (1,11)` and forward those beats into `l3_core`.
+- For one accepted third-layer logical kernel:
+  - weight index `0..24` -> `cfg_weight_cin=0`
+  - weight index `25..49` -> `cfg_weight_cin=1`
+  - weight index `50..74` -> `cfg_weight_cin=2`
+  - weight index `75..99` -> `cfg_weight_cin=3`
+  - weight index `100..124` -> `cfg_weight_cin=4`
+  - weight index `125..149` -> `cfg_weight_cin=5`
+- `l3_top` must generate local `cfg_weight_last` only on the final beat of each `25`-weight slice, not only on the final beat of the full `150`-weight logical kernel.
+- Non-third-layer targets on the global stream must not block progress in this wrapper stage; they are acknowledged and skipped locally.
+- `start` must be gated so third-layer run phase begins only after the full global preload transaction has completed.
+- `weight_loaded` at `l3_top` level means `l3_core` reports all `12` third-layer logical output groups loaded.
+
+### 4. Validation & Error Matrix
+- forward one `150`-weight logical kernel into `l3_core` without splitting into `6 x 25` slices -> internal `conv_l1` slices receive wrong load boundaries
+- generate local `cfg_weight_last` only on weight index `149` -> only one internal slice sees end-of-load, other slices never report loaded
+- let non-third-layer global targets wait on third-layer local readiness -> unnecessary cross-layer preload coupling
+- allow `start` before global preload completion -> third-layer compute may begin before all logical kernels are loaded
+
+### 5. Good/Base/Bad Cases
+- Good: one third-layer logical output kernel consumes `150` serialized global weights, and the wrapper translates them into `6` independent `25`-beat local slice loads.
+- Base: `l3_top_tb` may prepend first-layer placeholder weights, then send the third-layer logical blocks and still observe correct third-layer output maps.
+- Bad: expose raw global `weight_idx[0:149]` directly to `l3_core` and expect it to infer slice boundaries by itself.
+
+### 6. Tests Required
+- `l3_top_tb` must verify:
+  - one full global preload stream of `6 * 25 + 12 * 150 = 1950` beats is accepted
+  - `cfg_last_err=0`
+  - `cfg_weight_done` pulses once at end of the full global preload
+  - `weight_loaded=1` before run starts
+  - one full `8x8` scan completes and `done` pulses
+  - all `12 * 8 * 8` readback points match TB-side software convolution
+- Assertion points:
+  - `SUMMARY: err_cnt=0`
+  - `rd_cnt=64`
+  - `weight_loaded=1`
+  - `cfg_last_err_seen=0`
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Third-layer top receives one 150-weight logical kernel and forwards only cfg_weight_out, leaving l3_core to guess which internal slice the current beat belongs to.
+```
+
+#### Correct
+```text
+Third-layer top receives one 150-weight logical kernel, maps weight_idx into cfg_weight_cin=0..5, and asserts local cfg_weight_last on every 25th beat.
+```
+
+---
+
+## Scenario: Fourth-Layer `relu+pool` Reuses The Existing Single-Channel Wrapper Across `12` Lanes
+
+### 1. Scope / Trigger
+- Trigger: after third-layer `12 x 8x8` output maps are verified, the next bring-up step is the following relu+pool stage, and the chosen route is to reuse the already verified single-channel relu+pool wrapper instead of redesigning a new fourth-layer-specialized datapath.
+
+### 2. Signatures
+- Reused single-channel wrapper:
+  - `relu_pool_l2`
+- Reused pure compute core:
+  - `relu_pool_core`
+- New fourth-layer top:
+  - `l4_top`
+- Upstream source side:
+  - `src_frame_valid[11:0]`
+  - `src_rd_en[11:0]`
+  - `src_rd_addr2d[11:0]`
+  - `src_rd_data[11:0]`
+  - `src_rd_valid[11:0]`
+  - `src_rd_done[11:0]`
+- Output side:
+  - `dst_frame_valid[11:0]`
+  - `dst_rd_en[11:0]`
+  - `dst_rd_addr2d[11:0]`
+  - `dst_rd_data[11:0]`
+  - `dst_rd_valid[11:0]`
+  - `dst_rd_done[11:0]`
+
+### 3. Contracts
+- Fourth-layer stage is still `relu` first, then `2x2 stride=2` max-pooling.
+- Quantization rule remains the same as the original design and current second-stage implementation:
+  - negative `32bit` input -> clamp to `0`
+  - non-negative value -> arithmetic right shift by `10`
+  - quantized output width -> signed `8bit`
+- The current reuse rule is:
+  - one `relu_pool_l2` instance still owns one single-channel map traversal
+  - `l4_top` replicates that wrapper `12` times in parallel
+- For fourth-layer use, the parameter set becomes:
+  - input map `8x8`
+  - output map `4x4`
+  - input width `32bit`
+  - output width `8bit`
+- `l4_top` must not introduce a new address-generation rule; it reuses the same wrapper-owned pooled-window traversal used by `relu_pool_l2`.
+- `l4_top` aggregate `done` means all `12` lanes finished one full `4x4` map.
+- Upstream read-bank release remains lane-local; each lane asserts its own `src_rd_done` only after its full `4x4` pooled map is complete.
+
+### 4. Validation & Error Matrix
+- skip ReLU and pool raw signed conv outputs directly -> function mismatch with baseline
+- change shift amount for fourth layer only -> cross-stage quantization mismatch
+- redesign a new pool traversal path even though the single-channel wrapper already matches `8x8 -> 4x4` -> unnecessary divergence and new bug surface
+- collapse `12` lanes into one serialized wrapper without updating top contract -> throughput and interface regression
+
+### 5. Good/Base/Bad Cases
+- Good: `l4_top` is structurally the same pattern as `l2_top`, but scaled from `6` lanes to `12` lanes and parameterized from `24x24 -> 12x12` to `8x8 -> 4x4`.
+- Base: `l4_top_tb` may preload synthetic `12 x 8x8` feature maps, run one full pass, and compare all `12 x 4 x 4` pooled results against TB-side software relu+pool.
+- Bad: fork a second relu quantization rule for fourth layer because the input source is `l3` instead of `l1`.
+
+### 6. Tests Required
+- `l4_top_tb` must verify:
+  - all `12` source buffers become frame-valid before start
+  - one full fourth-layer pass completes and `done` pulses
+  - all `12 * 4 * 4` readback points match TB-side software relu+pool
+- Assertion points:
+  - `SUMMARY: err_cnt=0`
+  - `rd_cnt=16`
+  - completion pulse observed once
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Because fourth layer follows l3, it needs a brand-new relu+pool module with a different quantization rule.
+```
+
+#### Correct
+```text
+Fourth layer still uses the same relu clamp + >>10 + 2x2 stride2 max-pool rule, so reuse the verified single-channel wrapper and scale it to 12 parallel lanes.
+```
+
+---
+
+## Scenario: Third-Layer `l3_top` Must Support PC + RTL Numerical Cross-Check
+
+### 1. Scope / Trigger
+- Trigger: third-layer outer wrapper `l3_top` is behaviorally stable, but the user requires one more truth check: a PC-side generated full `12 x 8x8` convolution golden result must be compared against `l3_top_tb` readback output.
+
+### 2. Signatures
+- PC script:
+  - `my_cnnV4/my_cnnV4_PCtest/l3_top12_pc_check.py`
+- PC artifacts:
+  - `l3_top12_global_weights.txt`
+  - `l3_top12_feature_map_all.txt`
+  - `l3_top12_console_lines.txt`
+- RTL testbench:
+  - `l3_top_tb`
+- RTL console trace:
+  - `RTL_L3 idx=<idx> row=<row> col=<col> out0=<v0> ... out11=<v11>`
+- PC console trace:
+  - `PC_L3 idx=<idx> row=<row> col=<col> out0=<v0> ... out11=<v11>`
+
+### 3. Contracts
+- PC side owns the numerical golden truth for the current directed third-layer case.
+- `l3_top_tb` must not re-derive the expected full-map result locally once the PC golden contract is introduced.
+- The PC script must generate:
+  - one full global preload file matching the current synthetic third-layer test pattern
+  - one full `12 x 8x8` output feature-map file
+  - one line-by-line console-style text file in raster order
+- `l3_top_tb` must read:
+  - global preload data from `l3_top12_global_weights.txt`
+  - expected output map from `l3_top12_feature_map_all.txt`
+- `l3_top_tb` must print its own readback results in the same raster-order line format so the user can directly compare PC and RTL outputs.
+- Line-format field order must stay aligned:
+  - `idx`
+  - `row`
+  - `col`
+  - `out0 .. out11`
+
+### 4. Validation & Error Matrix
+- TB computes local expected map while PC script also exists -> duplicated truth source, future drift risk
+- PC and TB use different synthetic weight stream construction -> false mismatch
+- PC and RTL print different output ordering -> user cannot compare line-by-line
+- PC updates golden files but TB still points at old paths -> stale verification
+
+### 5. Good/Base/Bad Cases
+- Good: run the PC script first, then run `l3_top_tb`, then compare `PC_L3` and `RTL_L3` lines by `idx,row,col`.
+- Base: the current directed third-layer case uses synthetic `6 x 12x12` inputs and synthetic `1950` global preload weights that exactly match the TB preload stream.
+- Bad: declare `l3_top` correct only because `err_cnt=0` from a TB-side self-computed model, without a separate PC golden source.
+
+### 6. Tests Required
+- Run `l3_top12_pc_check.py` and confirm it emits:
+  - `l3_top12_global_weights.txt`
+  - `l3_top12_feature_map_all.txt`
+  - `l3_top12_console_lines.txt`
+- Run `l3_top_tb` and confirm:
+  - `SUMMARY: err_cnt=0`
+  - `rd_cnt=64`
+  - `cfg_last_err_seen=0`
+  - one `RTL_L3` line is printed for every `8x8` output coordinate
+- Manual or scripted comparison must confirm `PC_L3` and `RTL_L3` lines match on all `64` coordinates.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+l3_top_tb already computes the expected map internally, so a PC golden check is unnecessary.
+```
+
+#### Correct
+```text
+Use the PC script as the golden source, let l3_top_tb read the same weight/result files, and compare PC_L3 versus RTL_L3 line by line.
+```
+
+---
+
+## Scenario: Fourth-Layer `l4_top` Must Support PC + RTL Numerical Cross-Check
+
+### 1. Scope / Trigger
+- Trigger: fourth-layer outer wrapper `l4_top` is behaviorally stable, and the verification route must match the third-layer rule: a PC-side generated full `12 x 4x4` relu+pool golden result is compared against `l4_top_tb` readback output.
+
+### 2. Signatures
+- PC script:
+  - `my_cnnV4/my_cnnV4_PCtest/l4_top12_pc_check.py`
+- PC artifacts:
+  - `l4_top12_feature_map_all.txt`
+  - `l4_top12_console_lines.txt`
+- RTL testbench:
+  - `l4_top_tb`
+- RTL console trace:
+  - `RTL_L4 idx=<idx> row=<row> col=<col> out0=<v0> ... out11=<v11>`
+- PC console trace:
+  - `PC_L4 idx=<idx> row=<row> col=<col> out0=<v0> ... out11=<v11>`
+
+### 3. Contracts
+- PC side owns the numerical golden truth for the current directed fourth-layer case.
+- `l4_top_tb` must not re-derive the expected full-map result locally once the PC golden contract is introduced.
+- The PC script must generate:
+  - one full `12 x 4x4` output feature-map file
+  - one line-by-line console-style text file in raster order
+- `l4_top_tb` must read expected output data from `l4_top12_feature_map_all.txt`.
+- `l4_top_tb` must print its own readback results in the same raster-order line format so the user can directly compare PC and RTL outputs.
+- Line-format field order must stay aligned:
+  - `idx`
+  - `row`
+  - `col`
+  - `out0 .. out11`
+- The current directed case uses the same synthetic input-map pattern already embedded in `l4_top_tb`, so the PC script must mirror that exact source-map construction.
+
+### 4. Validation & Error Matrix
+- TB computes local expected pool map while PC script also exists -> duplicated truth source, future drift risk
+- PC and TB use different synthetic source-map construction -> false mismatch
+- PC and RTL print different output ordering -> user cannot compare line-by-line
+- PC updates golden files but TB still points at old paths -> stale verification
+
+### 5. Good/Base/Bad Cases
+- Good: run the PC script first, then run `l4_top_tb`, then compare `PC_L4` and `RTL_L4` lines by `idx,row,col`.
+- Base: the current directed fourth-layer case uses synthetic `12 x 8x8` signed source maps and one full `12 x 4x4` pooled readback.
+- Bad: declare `l4_top` correct only because `err_cnt=0` from a TB-side self-computed model, without a separate PC golden source.
+
+### 6. Tests Required
+- Run `l4_top12_pc_check.py` and confirm it emits:
+  - `l4_top12_feature_map_all.txt`
+  - `l4_top12_console_lines.txt`
+- Run `l4_top_tb` and confirm:
+  - `SUMMARY: err_cnt=0`
+  - `rd_cnt=16`
+  - `done_seen=1`
+  - one `RTL_L4` line is printed for every `4x4` output coordinate
+- Manual or scripted comparison must confirm `PC_L4` and `RTL_L4` lines match on all `16` coordinates.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+l4_top_tb already computes the expected pool map internally, so a PC golden check is unnecessary.
+```
+
+#### Correct
+```text
+Use the PC script as the golden source, let l4_top_tb read the same result file, and compare PC_L4 versus RTL_L4 line by line.
 ```
