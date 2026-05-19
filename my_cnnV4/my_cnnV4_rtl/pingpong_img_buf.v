@@ -30,16 +30,16 @@ module pingpong_img_buf
     output reg wr_done,                          // 当前写帧结束脉冲
     output signed [DATA_WIDTH-1:0] rd_data,      // 读数据
     output reg rd_valid,                         // 读数据有效
-    output reg rd_frame_valid,                   // 当前读bank有效
-    output reg wr_bank_sel,                      // 当前写bank选择
-    output reg rd_bank_sel,                      // 当前读bank选择
-    output reg bank0_valid,                      // bank0有效标志
-    output reg bank1_valid                       // bank1有效标志
+    output reg rd_frame_valid                    // 当前读bank有效
 );
 
     (* ram_style = "block" *) reg signed [DATA_WIDTH-1:0] bank0 [0:DEPTH-1];
     (* ram_style = "block" *) reg signed [DATA_WIDTH-1:0] bank1 [0:DEPTH-1];
 
+    reg wr_bank_sel;
+    reg rd_bank_sel;
+    reg bank0_valid;
+    reg bank1_valid;
     reg wr_busy;
     reg rd_bank_sel_hold;
     reg signed [DATA_WIDTH-1:0] bank0_rd_data;

@@ -2783,3 +2783,202 @@ The final CNN top should ignore l1_top~l5_top and directly reconnect all raw sub
 ```text
 The final CNN top should treat l1_top~l5_top as stable layer-boundary blocks, because each top already locked one reusable interface and one verified stage behavior.
 ```
+
+---
+
+## Scenario: Final `CNN.v` Must Use Real Split Preload Streams And Real `28x28` Image Files
+
+### 1. Scope / Trigger
+- Trigger: after `l1_top ~ l5_top` are separately verified, the final V4 CNN-level wrapper is introduced and must run against the user's real preload files instead of synthetic stage-local data.
+
+### 2. Signatures
+- Final top:
+  - `CNN`
+- External preload side:
+  - `weight_tvalid`
+  - `weight_tready`
+  - `weight_tdata`
+  - `weightfc_tvalid`
+  - `weightfc_tready`
+  - `weightfc_tdata`
+- External image side:
+  - `image_tvalid`
+  - `image_tready`
+  - `image_tdata`
+- Final result side:
+  - `result_tvalid`
+  - `result_tready`
+  - `result_tdata`
+  - `cnn_done`
+
+### 3. Contracts
+- Final V4 preload is split into two physical streams:
+  - `weight_t*` carries the real convolution preload stream for `l1_top + l3_top`
+  - `weightfc_t*` carries the real FC preload stream for the final FC stage
+- The final preload order is fixed:
+  1. full convolution preload
+  2. full FC preload
+  3. one full `28x28` image frame
+  4. `l1 -> l2 -> l3 -> l4 -> l5`
+  5. serialize `10` final scores
+- Real-file mapping for the current project:
+  - convolution weights: `C:/Users/28010/Desktop/my_cnn/sim/cnn_test/cw.txt`
+  - FC weights: `C:/Users/28010/Desktop/my_cnn/sim/cnn_test/fcw.txt`
+  - valid `28x28` image example: `C:/Users/28010/Desktop/my_cnn/test/0.txt`
+- `C:/Users/28010/Desktop/my_cnn/sim/cnn_test/0.txt` is not a valid first-layer image source for V4 full-CNN integration, because it contains only `576` points, not `784`.
+- The final top must not expose image-ready too early:
+  - image feeding must start only after the image address path has been armed for the current frame
+  - otherwise the first few pixels may be consumed before `frame_start` is aligned
+- The final top must keep the layer-boundary ownership rule:
+  - layer-local scheduling remains inside `l1_top ~ l5_top`
+  - `CNN.v` owns only global preload ordering, layer starts, layer-done sequencing, and result serialization
+
+### 4. Validation & Error Matrix
+- use `sim/cnn_test/0.txt` directly as first-layer image input -> first layer sees undersized frame, whole-CNN check is invalid
+- start image streaming before `frame_start` / image-path arm cycle -> first pixels may be dropped
+- start downstream layer based on guessed cycle count instead of `ready/done` -> integration becomes timing-fragile
+- force FC stage to consume a padded fake global stream when a real dedicated `fcw.txt` stream already exists -> top-level preload contract becomes harder to verify and maintain
+
+### 5. Good/Base/Bad Cases
+- Good: run `CNN_tb` with `test/0.txt`, `cw.txt`, and `fcw.txt`, then compare `RTL_SCORE` against PC-generated `cnn_scores.txt`.
+- Base: preload all weights first, then feed one real `28x28` frame, then wait for `cnn_done`.
+- Bad: reuse stage-local synthetic image files or synthetic weight streams in the final whole-CNN regression.
+
+### 6. Tests Required
+- Run `my_cnnV4/my_cnnV4_PCtest/cnn_pc_check.py` and confirm it emits:
+  - `cnn_scores.txt`
+  - `cnn_console_lines.txt`
+- Run `my_cnnV4/my_cnnV4.sim/CNN_tb.v` and confirm:
+  - all three real files are opened successfully
+  - `RTL_SCORE idx=0..9` are printed
+  - `EXP_SCORE idx=0..9` are printed
+  - `SUMMARY err_cnt=0`
+  - `RTL_PREDICT digit=<n>` is printed
+- Manual or scripted comparison must confirm PC and RTL scores match exactly on all `10` outputs.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+The final whole-CNN TB can keep using sim/cnn_test/0.txt because it already exists next to cw.txt and fcw.txt.
+```
+
+#### Correct
+```text
+Use a real 784-line image file such as test/0.txt for first-layer input, keep cw.txt and fcw.txt split, and let CNN.v preload conv, then FC, then image.
+```
+
+---
+
+## Scenario: Vivado Project Source Lists Must Stay In Sync With RTL Renames And Cleanup
+
+### 1. Scope / Trigger
+- Trigger: reusable RTL modules were renamed or split out during `my_cnnV4` integration, and Vivado simulation failed at `xelab elaborate` even though the `.v` files existed on disk.
+
+### 2. Signatures
+- Project file:
+  - `my_cnnV4/my_cnnV4.xpr`
+- Generated simulation compile list:
+  - `my_cnnV4/my_cnnV4.sim/sim_1/behav/xsim/*_vlog.prj`
+- Typical failure log:
+  - `my_cnnV4/my_cnnV4.sim/sim_1/behav/xsim/elaborate.log`
+
+### 3. Contracts
+- Handwritten RTL existing on disk is not enough; the file must also be present in Vivado `sources_1` to be compiled into simulation.
+- After module renames or wrapper splits, `sources_1` must contain the new files:
+  - example: `conv_core.v`
+  - example: `win_addr_mgr.v`
+  - example: `fc_wgt_dist_raw.v`
+- Stale project entries that point to deleted files must be removed from `my_cnnV4.xpr`.
+- Stale simulation view artifacts such as deleted `.wcfg` references should also be removed from `sim_1`, otherwise GUI simulation startup may keep warning or fail.
+
+### 4. Validation & Error Matrix
+- RTL file exists on disk but is not listed in `sources_1` -> `VRFC 10-2063 Module <...> not found`
+- deleted old file still referenced in `xpr` -> project open emits critical warnings and compile order may stay dirty
+- stale `.wcfg` path referenced by `sim_1` -> simulation launch may warn or bind to a dead waveform config
+
+### 5. Good/Base/Bad Cases
+- Good: after a rename or split, update `my_cnnV4.xpr`, then regenerate compile order so the generated `*_vlog.prj` contains the new RTL file.
+- Base: inspect `elaborate.log` first when `Run Simulation` fails at elaborate stage.
+- Bad: only copy the new `.v` file into the RTL folder and assume Vivado will pick it up automatically.
+
+### 6. Tests Required
+- Confirm `my_cnnV4.xpr` contains every active handwritten RTL file needed by the selected top.
+- Confirm removed legacy files are no longer referenced in `my_cnnV4.xpr`.
+- After reopening or refreshing the project, confirm generated `*_vlog.prj` includes the expected new files.
+- Re-run simulation and verify `elaborate.log` no longer reports `Module <...> not found`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Rename l1_addr_mgr -> win_addr_mgr on disk, but do not update my_cnnV4.xpr because the RTL folder already contains the new file.
+```
+
+#### Correct
+```text
+After RTL rename/cleanup, update my_cnnV4.xpr sources_1 and sim_1 references, then refresh compile order before rerunning simulation.
+```
+
+---
+
+## Scenario: Parallel Testbench Drivers Must Not Share One Global Loop Counter
+
+### 1. Scope / Trigger
+- Trigger: `CNN_tb` uses `fork ... join` to send convolution weights, FC weights, and image pixels in parallel, and simulation appears to stall right after preload even though several handshake signals toggled.
+
+### 2. Signatures
+- Testbench tasks:
+  - `send_conv_weights`
+  - `send_fc_weights`
+  - `send_image`
+- Shared control pattern:
+  - `fork ... join`
+  - `while(<counter> < limit>)`
+
+### 3. Contracts
+- When multiple TB driver tasks run in parallel, each task must own its own local loop counter.
+- A global integer such as `idx` must not be reused by multiple concurrent sender tasks.
+- Each task must index only its own memory stream:
+  - conv preload task -> local `conv_idx`
+  - FC preload task -> local `fc_idx`
+  - image task -> local `img_idx`
+
+### 4. Validation & Error Matrix
+- three forked tasks share one global counter -> one task may advance another task's loop termination condition, causing premature stop or deadlock
+- preload handshake appears to complete but top state does not progress -> first suspect concurrent TB counter aliasing before blaming RTL
+
+### 5. Good/Base/Bad Cases
+- Good: each parallel sender task declares and uses its own local integer counter.
+- Base: parallel stimulus is acceptable only if task-local state is fully separated.
+- Bad: `send_conv_weights`, `send_fc_weights`, and `send_image` all read and write one shared `idx`.
+
+### 6. Tests Required
+- Review every forked TB sender task and confirm loop counters are task-local.
+- If simulation stalls after preload, inspect whether any forked task still depends on shared mutable state.
+- After fixing counters, rerun the whole-CNN TB and verify state progresses past preload into image load and layer execution.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+integer idx;
+
+fork
+    send_conv_weights(); // uses idx
+    send_fc_weights();   // also uses idx
+    send_image();        // also uses idx
+join
+```
+
+#### Correct
+```verilog
+task send_conv_weights;
+    integer conv_idx;
+endtask
+
+task send_fc_weights;
+    integer fc_idx;
+endtask
+
+task send_image;
+    integer img_idx;
+endtask
+```

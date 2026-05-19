@@ -1,0 +1,11 @@
+PC_SCORE idx=0 score=26222
+PC_SCORE idx=1 score=-37482
+PC_SCORE idx=2 score=-4820
+PC_SCORE idx=3 score=-39755
+PC_SCORE idx=4 score=-18200
+PC_SCORE idx=5 score=-20802
+PC_SCORE idx=6 score=5326
+PC_SCORE idx=7 score=-10250
+PC_SCORE idx=8 score=-3068
+PC_SCORE idx=9 score=-8056
+PC_PREDICT digit=0 score=26222

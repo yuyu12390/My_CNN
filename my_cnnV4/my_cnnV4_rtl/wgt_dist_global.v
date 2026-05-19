@@ -4,20 +4,25 @@
 // 1. 接收一条串行权重流
 // 2. 按固定顺序输出逻辑目标 {layer_id, kernel_id}
 // 3. 内部计数独立于外部 last, 可报告时序错误
-// 4. 当前版本顺序固定为:
+// 4. 默认顺序固定为:
 //    (0,0) ~ (0,5), 每核 25 个权重
 //    (1,0) ~ (1,11), 每核 150 个权重
+// 5. 可选扩展第三段:
+//    (2,0) ~ (2,9), 每核 192 个权重
 module wgt_dist_global
 #(
-    parameter WEIGHT_WIDTH    = 8,
-    parameter LAYER_ID_WIDTH  = 1,
-    parameter KERNEL_ID_WIDTH = 4,
+    parameter WEIGHT_WIDTH     = 8,
+    parameter LAYER_ID_WIDTH   = 1,
+    parameter KERNEL_ID_WIDTH  = 4,
     parameter WEIGHT_IDX_WIDTH = 8,
-    parameter L0_KERNEL_NUM   = 6,
-    parameter L0_WEIGHT_NUM   = 25,
-    parameter L1_KERNEL_NUM   = 12,
-    parameter L1_WEIGHT_NUM   = 150,
-    parameter DST2D_WIDTH     = LAYER_ID_WIDTH + KERNEL_ID_WIDTH
+    parameter L0_KERNEL_NUM    = 6,
+    parameter L0_WEIGHT_NUM    = 25,
+    parameter L1_KERNEL_NUM    = 12,
+    parameter L1_WEIGHT_NUM    = 150,
+    parameter ENABLE_L2        = 0,
+    parameter L2_KERNEL_NUM    = 10,
+    parameter L2_WEIGHT_NUM    = 192,
+    parameter DST2D_WIDTH      = LAYER_ID_WIDTH + KERNEL_ID_WIDTH
 )
 (
     input  clk,                                              // 时钟
@@ -38,8 +43,10 @@ module wgt_dist_global
     output reg cfg_last_err                                  // 外部 last 错误脉冲
 );
 
-    localparam [LAYER_ID_WIDTH-1:0] LAYER0_ID = {LAYER_ID_WIDTH{1'b0}};
-    localparam [LAYER_ID_WIDTH-1:0] LAYER1_ID = {{(LAYER_ID_WIDTH-1){1'b0}}, 1'b1};
+    localparam [LAYER_ID_WIDTH-1:0] LAYER0_ID = 0;
+    localparam [LAYER_ID_WIDTH-1:0] LAYER1_ID = 1;
+    localparam [LAYER_ID_WIDTH-1:0] LAYER2_ID = 2;
+    localparam integer ENABLE_L2_INT = (ENABLE_L2 && (LAYER_ID_WIDTH >= 2)) ? 1 : 0;
 
     reg [LAYER_ID_WIDTH-1:0] cur_layer_id;
     reg [KERNEL_ID_WIDTH-1:0] cur_kernel_id;
@@ -47,6 +54,9 @@ module wgt_dist_global
 
     wire cfg_fire;
     wire cur_is_layer0;
+    wire cur_is_layer1;
+    wire cur_is_layer2;
+    wire cur_is_last_layer;
     wire [WEIGHT_IDX_WIDTH-1:0] cur_last_idx;
     wire dst_last_exp;
     wire stream_last_exp;
@@ -61,24 +71,34 @@ module wgt_dist_global
     // 只有真正握手成功后, 目标号和组内计数才推进
     assign cfg_fire = cfg_weight_valid && cfg_weight_ready;
     assign cur_is_layer0 = (cur_layer_id == LAYER0_ID);
-    assign cur_last_idx = cur_is_layer0 ? (L0_WEIGHT_NUM - 1) : (L1_WEIGHT_NUM - 1);
+    assign cur_is_layer1 = (cur_layer_id == LAYER1_ID);
+    assign cur_is_layer2 = ENABLE_L2_INT && (cur_layer_id == LAYER2_ID);
+    assign cur_is_last_layer = ENABLE_L2_INT ? cur_is_layer2 : cur_is_layer1;
+
+    assign cur_last_idx = cur_is_layer0 ? (L0_WEIGHT_NUM - 1)
+                        : (cur_is_layer1 ? (L1_WEIGHT_NUM - 1)
+                                         : (L2_WEIGHT_NUM - 1));
     assign dst_last_exp = (cur_weight_idx == cur_last_idx);
+
     assign last_kernel_in_layer = cur_is_layer0
                                 ? (cur_kernel_id == (L0_KERNEL_NUM - 1))
-                                : (cur_kernel_id == (L1_KERNEL_NUM - 1));
-    assign stream_last_exp = (!cur_is_layer0) && last_kernel_in_layer && dst_last_exp;
+                                : (cur_is_layer1
+                                ? (cur_kernel_id == (L1_KERNEL_NUM - 1))
+                                : (cur_kernel_id == (L2_KERNEL_NUM - 1)));
+
+    assign stream_last_exp = cur_is_last_layer && last_kernel_in_layer && dst_last_exp;
     assign dst_last = weight_valid && dst_last_exp;
 
     always @(posedge clk or negedge rstn)
     begin
         if(!rstn)
         begin
-            cur_layer_id  <= {LAYER_ID_WIDTH{1'b0}};
-            cur_kernel_id <= {KERNEL_ID_WIDTH{1'b0}};
+            cur_layer_id   <= {LAYER_ID_WIDTH{1'b0}};
+            cur_kernel_id  <= {KERNEL_ID_WIDTH{1'b0}};
             cur_weight_idx <= {WEIGHT_IDX_WIDTH{1'b0}};
-            load_busy <= 1'b0;
-            load_done <= 1'b0;
-            cfg_last_err <= 1'b0;
+            load_busy      <= 1'b0;
+            load_done      <= 1'b0;
+            cfg_last_err   <= 1'b0;
         end
         else
         begin
@@ -96,11 +116,11 @@ module wgt_dist_global
                 if(stream_last_exp)
                 begin
                     // 整包结束后回到初始目标, 等待下一轮预装载
-                    cur_layer_id <= {LAYER_ID_WIDTH{1'b0}};
-                    cur_kernel_id <= {KERNEL_ID_WIDTH{1'b0}};
+                    cur_layer_id   <= {LAYER_ID_WIDTH{1'b0}};
+                    cur_kernel_id  <= {KERNEL_ID_WIDTH{1'b0}};
                     cur_weight_idx <= {WEIGHT_IDX_WIDTH{1'b0}};
-                    load_busy <= 1'b0;
-                    load_done <= 1'b1;
+                    load_busy      <= 1'b0;
+                    load_done      <= 1'b1;
                 end
                 else
                 begin
@@ -116,6 +136,19 @@ module wgt_dist_global
                             if(last_kernel_in_layer)
                             begin
                                 cur_layer_id <= LAYER1_ID;
+                                cur_kernel_id <= {KERNEL_ID_WIDTH{1'b0}};
+                            end
+                            else
+                            begin
+                                cur_kernel_id <= cur_kernel_id + 1'b1;
+                            end
+                        end
+                        else if(cur_is_layer1)
+                        begin
+                            // 第二层最后一个卷积核结束后, 可选切到 FC 段
+                            if(last_kernel_in_layer && ENABLE_L2_INT)
+                            begin
+                                cur_layer_id <= LAYER2_ID;
                                 cur_kernel_id <= {KERNEL_ID_WIDTH{1'b0}};
                             end
                             else

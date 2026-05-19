@@ -28,9 +28,7 @@ module img_in_buf
     output reg wr_done,                       // 写完一帧脉冲
     output reg frame_valid,                   // 当前缓存帧有效
     output [DATA_WIDTH-1:0] rd_data,          // 读数据
-    output reg rd_valid,                      // 读数据有效
-    output [ADDR1D_WIDTH-1:0] dbg_wr_addr1d,  // 调试用写一维地址
-    output [ADDR1D_WIDTH-1:0] dbg_rd_addr1d   // 调试用读一维地址
+    output reg rd_valid                       // 读数据有效
 );
 
     wire [ROW_ADDR_WIDTH-1:0] wr_row;
@@ -58,8 +56,6 @@ module img_in_buf
     assign wr_fire = image_tvalid && addr_valid;
     assign rd_fire = rd_en && frame_valid;
 
-    assign dbg_wr_addr1d = wr_addr1d;
-    assign dbg_rd_addr1d = rd_addr1d;
     assign rd_data = bram_rd_data;
 
     // A口写, B口读
