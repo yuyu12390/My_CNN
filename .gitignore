@@ -2,7 +2,10 @@
 
 .trellis/.developer
 .trellis/.runtime/
-.trellis/workspace/
+.trellis/workspace/*
+!.trellis/workspace/*/
+!.trellis/workspace/*/index.md
+!.trellis/workspace/*/journal-*.md
 
 **/.Xil/
 **/*.cache/

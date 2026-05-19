@@ -114,28 +114,14 @@ def safe_trellis_paths_to_add(repo_root: Path) -> list[str]:
 def safe_archive_paths_to_add(repo_root: Path) -> list[str]:
     """Return paths to stage after `task.py archive`.
 
-    Limited to the archive subtree (where the freshly-moved task lives) plus
-    the source task directory's parent area to capture the deletion in the
-    same commit. We pass the whole `.trellis/tasks/` path so deletions of the
-    pre-move path are tracked, but only as a SPECIFIC subpath — not the whole
-    `.trellis/` tree.
+    Limited to the task store subtree so the archive copy, the source-path
+    deletion, and any sibling task metadata updates are staged in the same
+    commit. We still avoid staging the whole `.trellis/` tree.
     """
     paths: list[str] = []
     tasks_dir = repo_root / DIR_WORKFLOW / DIR_TASKS
     if tasks_dir.is_dir():
-        # The archive copy.
-        archive_dir = tasks_dir / DIR_ARCHIVE
-        if archive_dir.is_dir():
-            paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}/{DIR_ARCHIVE}")
-        # Active tasks (some may have been re-touched, e.g. parent's
-        # children list). This captures the source-path deletion too because
-        # `git add` on a directory records removals.
-        for child in sorted(tasks_dir.iterdir()):
-            if not child.is_dir():
-                continue
-            if child.name == DIR_ARCHIVE:
-                continue
-            paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}/{child.name}")
+        paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}")
     return paths
 
 

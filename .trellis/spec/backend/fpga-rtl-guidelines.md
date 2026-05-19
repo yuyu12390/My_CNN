@@ -358,6 +358,60 @@ assign wr_frame_done = wr_fire && wr_last;
 ### 6. Tests Required
 - Load one full `5x5` weight set and check `cfg_weight_done=1`.
 - Stream one `25`-pixel window and verify exactly one `out_valid` pulse and the expected signed result.
+
+---
+
+## Scenario: Third-Layer Raw Weight Order Must Match V1 Baseline
+
+### 1. Scope / Trigger
+- Trigger: whole-network `CNN_tb` and PC script matched each other but disagreed with the original `my_cnnV1` prediction on the same `28x28` image and `cw.txt/fcw.txt`.
+
+### 2. Signatures
+- Global convolution weight stream:
+  - `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`
+- Third-layer local translation fields:
+  - `cfg_weight_out`
+  - `cfg_weight_cin`
+  - `cfg_weight_last`
+
+### 3. Contracts
+- The third-layer (`6in12out`) logical kernel weights must follow the original raw `cw.txt` stream order from `my_cnnV1`.
+- This order is not `out-major 150 weights per output`.
+- Correct order is:
+  - `cin0`: `out0~out5`, then `out6~out11`
+  - `cin1`: `out0~out5`, then `out6~out11`
+  - ...
+  - `cin5`: `out0~out5`, then `out6~out11`
+- Each `(cin, out)` slice still contains one contiguous `5x5 = 25` tap group.
+
+### 4. Validation & Error Matrix
+- Use `150 + out*150 + cin*25` for L3 interpretation -> RTL/PC may stay mutually consistent but whole-network prediction can differ from `V1`
+- Align PC script but not RTL -> PC/RTL mismatch
+- Align RTL but not PC script -> golden score file mismatch in `CNN_tb`
+
+### 5. Good/Base/Bad Cases
+- Good: `test/0.txt + cw.txt + fcw.txt` yields the same final predicted digit as the original `V1` baseline.
+- Base: third-layer local translator reconstructs `cfg_weight_cin` and `cfg_weight_out` from the raw stream index before feeding `l3_core`.
+- Bad: assume the second convolution layer uses the same weight-major layout as the first layer.
+
+### 6. Tests Required
+- Recompute the whole network in PC with the corrected L3 raw-stream order and compare against original `V1` logs.
+- Re-run `CNN_tb` and confirm RTL scores match the PC score file.
+- Check at least one known sample where filename expectation is known, such as the corrected digit-`0` case.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+# 把第三层当成每个输出核连续150个权重
+oc_base = 150 + oc * 150
+ic_base = oc_base + ic * 25
+```
+
+#### Correct
+```python
+# 第三层沿用V1原始权重流: cin-major -> out-group -> lane -> 25 taps
+kbase = 150 + (ic * 300) + (group * 150) + (lane * 25)
+```
 - Hold `out_ready=0` for at least one cycle after the result appears and verify `out_data` stays stable and `in_ready` stays low.
 - Verify `in_ready=0` before weights are loaded.
 
