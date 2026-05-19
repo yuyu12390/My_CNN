@@ -1,10 +1,10 @@
 `timescale 1ns / 1ns
 
-// 第一层统一地址管理模块
+// 通用窗口地址管理模块
 // 1. 同时管理窗口读地址和卷积结果写地址
 // 2. 一个窗口输出 25 个读地址, 对应 1 个写地址
 // 3. 只有卷积结果真正写成功后, 才推进到下一个输出点
-module l1_addr_mgr
+module win_addr_mgr
 #(
     parameter IMG_W = 28,
     parameter IMG_H = 28,

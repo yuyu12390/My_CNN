@@ -1,4 +1,4 @@
-# FPGA RTL Guidelines
+﻿# FPGA RTL Guidelines
 
 > Project-level RTL conventions captured from `my_cnnV4` architecture work.
 
@@ -211,6 +211,54 @@ module example_mod
 
 ---
 
+## Convention: Reusable RTL Modules Must Use Functional Names, Not Layer-Tied Names
+
+**What**: If one RTL module is intentionally reused across multiple CNN stages, its public file name and module name must describe the function it performs, not the layer where it was first introduced.
+
+**Why**:
+- Layer-tied names such as `conv_l1` or `l1_addr_mgr` become misleading once the same module is reused in later stages.
+- Misleading names make top-level integration and review harder, because the reader cannot tell whether a module is truly layer-local or a reusable core.
+- The current V4 architecture already reuses the same serial convolution slice and the same window address manager beyond the first layer.
+
+### Required Naming Rule
+
+- Reusable arithmetic kernels use functional names:
+  - `conv_core` instead of `conv_l1`
+  - keep layer-local wrappers in layer scope, for example `l1_core`, `l3_out_core`
+- Reusable traversal / scheduling helpers use functional names:
+  - `win_addr_mgr` instead of `l1_addr_mgr`
+- Layer-specific tops may still use layer names:
+  - `l1_top`
+  - `l2_top`
+  - `l3_top`
+  - `l4_top`
+  - `l5_top`
+
+### Good Pattern
+
+```verilog
+win_addr_mgr u_win_addr_mgr (...);
+conv_core    u_conv_core    (...);
+```
+
+### Wrong Pattern
+
+```verilog
+// 这个模块已经被第三层复用, 但名字还绑在第一层
+l1_addr_mgr u_l3_addr_mgr (...);
+conv_l1     u_conv_l3_slice (...);
+```
+
+### Tests Required
+
+- Search the codebase after a reusable-module rename and confirm:
+  - no old module symbol remains in RTL
+  - no old file path remains in project files
+  - no old name remains in the active TB / PC check flow
+- Re-run at least one regression on every stage that reuses the renamed module.
+
+---
+
 ## Scenario: Layer-Boundary Ping-Pong Ownership
 
 ### 1. Scope / Trigger
@@ -273,7 +321,7 @@ assign wr_frame_done = wr_fire && wr_last;
 ## Scenario: Stream-Fed Serial Convolution Kernel
 
 ### 1. Scope / Trigger
-- Trigger: `my_cnnV4` first-layer convolution is refactored so `conv_l1` only consumes a pixel stream during run phase and no longer owns image-cache addressing.
+- Trigger: `my_cnnV4` first-layer convolution is refactored so `conv_core` only consumes a pixel stream during run phase and no longer owns image-cache addressing.
 
 ### 2. Signatures
 - Weight-load side:
@@ -418,6 +466,330 @@ assign wr_addr_1d = (wr_row * IMG_W) + wr_col;
 - The final accepted address must be `(IMG_H-1, IMG_W-1)`.
 - The write path marks one full image as valid only after the final accepted write beat.
 
+---
+
+## Scenario: FC Single-Neuron Stream Contract
+
+### 1. Scope / Trigger
+- Trigger: `my_cnnV4` fifth layer reuses the V4 stream/handshake style instead of directly copying the original monolithic FC scheduling.
+
+### 2. Signatures
+- Weight-load side:
+  - `cfg_weight_valid`, `cfg_weight_ready`, `cfg_weight_data`, `cfg_weight_last`, `cfg_weight_done`
+- Input-vector side:
+  - `in_valid`, `in_ready`, `in_data[LANE_NUM*DATA_WIDTH-1:0]`, `in_last`
+- Result side:
+  - `out_valid`, `out_ready`, `out_data`
+
+### 3. Contracts
+- One `fc_neuron` instance owns exactly one output neuron.
+- The neuron must preload its full weight set before accepting runtime input data.
+- Current V4 FC base contract uses:
+  - `LANE_NUM = 6`
+  - `GROUP_NUM = 2`
+  - `BEATS_PER_GROUP = 16`
+  - total beats per inference = `32`
+  - total weights per neuron = `192`
+- Runtime input format:
+  - each beat carries `6` signed `8bit` values in parallel
+  - first 16 beats correspond to input channels `0~5`
+  - next 16 beats correspond to input channels `6~11`
+- Weight layout inside one neuron:
+  - first `96` weights map to group0 (`6 x 16`)
+  - next `96` weights map to group1 (`6 x 16`)
+  - within each group, weights are stored channel-major then spatial-minor
+- `in_last` marks the final beat of the current neuron input vector.
+- `out_valid` must hold until `out_ready`.
+
+### 4. Validation & Error Matrix
+- `in_valid=1` before `weight_loaded=1` -> `in_ready` must stay low
+- `cfg_weight_valid=1` while runtime input is active -> weight side must wait for `cfg_weight_ready`
+- fewer than `192` weights with `cfg_weight_last=1` -> controller bug, module still closes the preload transaction
+- fewer than `32` runtime beats with `in_last=1` -> controller bug, module still closes the current inference transaction
+- `out_valid=1` and `out_ready=0` -> result must be held stable
+
+### 5. Good/Base/Bad Cases
+- Good: preload 192 weights, then send 32 beats of 6-lane input, then consume exactly one 32bit score.
+- Base: downstream accepts the score immediately and the neuron returns to idle.
+- Bad: make the neuron generate upper-layer read addresses by itself.
+
+### 6. Tests Required
+- Load one full 192-weight set and check `cfg_weight_done=1`.
+- Send one complete 32-beat input vector and verify one `out_valid` pulse with the expected signed sum.
+- Hold `out_ready=0` for at least one cycle after `out_valid=1` and verify result stability.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// FC 绁炵粡鍏冨唴閮ㄧ洿鎺ヨ嚜宸卞幓绠′笂涓€绾х紦瀛樺湴鍧€
+always @(posedge clk) begin
+    if(start_fc) begin
+        rd_addr2d <= rd_addr2d + 1'b1;
+    end
+end
+```
+
+#### Correct
+```verilog
+// FC 绁炵粡鍏冨彧鍚?6 璺苟琛岃緭鍏ユ祦, 涓嶆嫢鏈夊湴鍧€閬嶅巻
+assign in_fire = in_valid && in_ready;
+
+always @(posedge clk) begin
+    if(in_fire) begin
+        acc_reg <= acc_next_comb;
+    end
+end
+```
+
+---
+
+## Scenario: FC Address Manager Contract
+
+### 1. Scope / Trigger
+- Trigger: the fifth-layer FC input is read from the fourth-layer `12 x 4 x 4` feature-map boundary using an explicit address manager.
+
+### 2. Signatures
+- Start/handshake:
+  - `start`, `rd_addr_valid`, `rd_addr_ready`, `done`, `busy`
+- Read-side payload:
+  - `rd_en[11:0]`
+  - `rd_addr2d[12*ADDR2D_WIDTH-1:0]`
+  - `rd_addr_last`
+- Debug/status:
+  - `cur_group`, `cur_row`, `cur_col`
+
+### 3. Contracts
+- `fc_addr_mgr` owns only traversal order, not data storage and not MAC computation.
+- One full FC read transaction is exactly `32` accepted beats:
+  - beats `0~15`: enable channels `0~5`
+  - beats `16~31`: enable channels `6~11`
+- On each beat, the active 6 lanes share the same packed 2D address `{row,col}`.
+- Spatial order is raster order on `4x4`:
+  - `(0,0)` to `(0,3)`
+  - `(1,0)` to `(1,3)`
+  - `(2,0)` to `(2,3)`
+  - `(3,0)` to `(3,3)`
+- The manager may advance only on `rd_addr_valid && rd_addr_ready`.
+- `rd_addr_last` is asserted only on the final accepted beat of the full 32-beat transaction.
+
+### 4. Validation & Error Matrix
+- `rd_addr_ready=0` -> group/row/col must hold
+- inactive channel lane has `rd_en=1` -> address fanout bug
+- active channel lane has `rd_en=0` -> data starvation bug
+- `rd_addr_last=1` before beat 31 -> premature end bug
+
+### 5. Good/Base/Bad Cases
+- Good: address manager outputs 32 accepted beats and switches from group0 to group1 exactly after the first 16 beats.
+- Base: a single downstream FC neuron consumes all 32 beats.
+- Bad: make the FC compute module infer channel grouping by itself.
+
+### 6. Tests Required
+- Simulate one full 32-beat run and verify:
+  - group0 active mask `000000111111`
+  - group1 active mask `111111000000`
+  - raster-order `{row,col}`
+  - `rd_addr_last=1` only on beat 31
+- Insert at least one `rd_addr_ready=0` stall and verify counters hold.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 鏈?FC 妯″潡閲岄殣寮忔帹鏂璇诲摢 6 璺?
+assign lane_sel = beat_cnt[4];
+```
+
+#### Correct
+```verilog
+// 鐢盳c_addr_mgr 鏄惧紡缁欏嚭鍝簺閫氶亾鍦ㄥ綋鍓嶆媿鏈夋晥
+assign rd_fire = rd_addr_valid && rd_addr_ready;
+assign rd_en[5:0] = (cur_group == 0);
+assign rd_en[11:6] = (cur_group == 1);
+```
+
+---
+
+## Scenario: Global Weight Stream Extended To FC Layer
+
+### 1. Scope / Trigger
+- Trigger: `wgt_dist_global` is extended so the same global preload flow can also feed the FC layer.
+
+### 2. Signatures
+- Existing interface remains unchanged:
+  - input: `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`, `weight_ready`
+  - output: `cfg_weight_ready`, `weight_valid`, `weight_data`, `weight_dst2d`, `weight_idx`, `dst_last`, `load_busy`, `load_done`, `cfg_last_err`
+- New parameters:
+  - `ENABLE_L2`
+  - `L2_KERNEL_NUM`
+  - `L2_WEIGHT_NUM`
+
+### 3. Contracts
+- Default compatibility mode:
+  - `ENABLE_L2 = 0`
+  - behavior must remain exactly the old two-stage stream:
+    - `(0,0)~(0,5)` with 25 weights each
+    - `(1,0)~(1,11)` with 150 weights each
+- FC-extended mode:
+  - requires `LAYER_ID_WIDTH >= 2`
+  - `ENABLE_L2 = 1`
+  - append the FC segment after layer1:
+    - `(2,0)~(2,9)` with 192 weights each
+- Internal target progression is driven only by successful handshake and internal counters, not by external `cfg_weight_last`.
+- `cfg_weight_last` is validation-only and must match the actual final configured destination.
+
+### 4. Validation & Error Matrix
+- `ENABLE_L2=1` with `LAYER_ID_WIDTH=1` -> FC segment is disabled by contract
+- external `cfg_weight_last` mismatches the internally expected final beat -> pulse `cfg_last_err`
+- downstream backpressure -> target id and `weight_idx` must hold
+
+### 5. Good/Base/Bad Cases
+- Good: old first-layer and third-layer tops continue to work unchanged with default parameters.
+- Base: FC top widens `LAYER_ID_WIDTH` to `2` and enables the third segment.
+- Bad: change the meaning of the existing first two stream segments while extending FC support.
+
+### 6. Tests Required
+- Re-run existing L1/L3 global-weight simulations with default parameters and verify no behavior change.
+- In FC-enabled mode, verify the global target sequence reaches `(2, last_kernel)` only after layer1 completes.
+- Verify `load_done=1` only on the truly final enabled segment.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 鎵╁睍 FC 鏃剁洿鎺ユ敼鎺夊師鏈夊眰鍙风紪鐮?
+assign LAYER1_ID = 2;
+```
+
+#### Correct
+```verilog
+// 淇濇寔鏃ф祦姘村叏鍏煎, FC 鍙湪鍙傛暟寮€鍚椂杩藉姞绗笁娈?
+parameter ENABLE_L2 = 0;
+parameter L2_KERNEL_NUM = 10;
+parameter L2_WEIGHT_NUM = 192;
+```
+
+---
+
+## Scenario: FC Top-Level Boundary Contract
+
+### 1. Scope / Trigger
+- Trigger: the fifth layer is promoted from standalone `fc_neuron` / `fc_addr_mgr` blocks to a complete `l5_top` that consumes fourth-layer feature-map buffers and produces 10 class scores.
+
+### 2. Signatures
+- Upstream feature-map side:
+  - input: `src_frame_valid[11:0]`, `src_rd_data[12*8-1:0]`, `src_rd_valid[11:0]`
+  - output: `src_rd_en[11:0]`, `src_rd_addr2d[12*ADDR2D_WIDTH-1:0]`, `src_rd_done[11:0]`
+- Global weight side:
+  - input: `cfg_weight_valid`, `cfg_weight_data`, `cfg_weight_last`
+  - output: `cfg_weight_ready`, `cfg_weight_done`, `cfg_last_err`
+- Score side:
+  - input: `score_ready`
+  - output: `score_valid`, `score_data[10*32-1:0]`
+- Control/status:
+  - input: `start`
+  - output: `ready`, `busy`, `done`, `weight_loaded`
+
+### 3. Contracts
+- `l5_top` owns only:
+  - FC-target weight routing from `wgt_dist_global`
+  - FC read-address launch through `fc_addr_mgr`
+  - packing 12 single-lane buffer returns into one 6-lane input beat for all FC neurons
+- `l5_top` must not own upstream BRAM address translation or storage internals.
+- Current baseline topology is:
+  - 12 single-channel upstream feature-map buffers
+  - 1 shared `fc_addr_mgr`
+  - 10 parallel `fc_neuron`
+- One FC runtime transaction is:
+  - `32` accepted beats total
+  - beats `0~15` consume channels `0~5`
+  - beats `16~31` consume channels `6~11`
+- The top may assert `ready=1` only after:
+  - FC global preload finished
+  - all 10 neurons report `weight_loaded=1`
+  - all 12 input feature-map buffers report `src_frame_valid=1`
+  - no pending read response or held score is active
+- `done` is a one-cycle pulse when the 10-score vector first becomes valid.
+- `score_valid` is the vector-level result-valid flag and is true only when all 10 neuron outputs are valid together.
+- When the final FC input beat is consumed, `l5_top` must release the 12 upstream buffers with `src_rd_done`.
+
+### 4. Validation & Error Matrix
+- `start=1` before preload or input frames are ready -> `l5_top` must block launch through `ready=0`
+- any of the 12 lanes missing `src_rd_valid` for the active 6-lane group -> top must hold the packed response and not advance
+- `src_rd_done` asserted before final beat consumption -> upstream frame may be truncated
+- `score_valid=1` while any neuron output is not valid -> vector assembly bug
+
+### 5. Good/Base/Bad Cases
+- Good: preload full global stream, wait for `ready=1`, launch once, then observe one 10-score output vector.
+- Base: the fifth-layer TB uses 12 ping-pong source buffers, generated FC weights, and software-computed 10-way scores.
+- Bad: connect one single upstream buffer directly to one `fc_neuron` and assume it can provide 6 values per beat.
+
+### 6. Tests Required
+- Compile and run `l5_top_tb`.
+- Check `cfg_last_err_seen=0`.
+- Check `weight_loaded=1` before launch.
+- Check all 10 printed `L5_SCORE` lines match the TB software results.
+- Final summary must report `err_cnt=0` and `TB_PASS`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 鎶?12 璺?buffer 褰撴垚 1 涓彲浠ヤ竴鎷嶅悙鍑?6 涓暟鐨勫崟鍙?
+assign neuron_in_data = src_rd_data[47:0];
+```
+
+#### Correct
+```verilog
+// 鍙褰撳墠 active 6 璺? 鎶婂畠浠墦鍖呮垚涓€涓?6-lane beat
+assign addr_rd_fire = addr_rd_valid && addr_rd_ready;
+assign rsp_capture_fire = rd_pending && rsp_all_valid_comb;
+assign neuron_in_valid = rsp_valid_reg && all_neuron_in_ready;
+```
+
+---
+
+## Scenario: FC Multiply Width Must Be Explicitly Extended
+
+### 1. Scope / Trigger
+- Trigger: fifth-layer top-level integration exposed a hidden arithmetic truncation bug that did not show up in the earlier small-value standalone neuron TB.
+
+### 2. Signatures
+- Affected logic:
+  - `fc_neuron` combinational MAC block
+  - per-lane multiply term inside `beat_sum_comb`
+
+### 3. Contracts
+- The 8bit input lane and 8bit signed weight must be sign-extended explicitly before multiplication when building the per-beat MAC term.
+- Do not rely on simulator or synthesis implicit width inference for the `8 x 8` multiply feeding a 32bit accumulator.
+- The FC neuron accumulation path must preserve the full signed multiply result before adding into `beat_sum_comb` / `acc_reg`.
+
+### 4. Validation & Error Matrix
+- omit explicit extension -> some directed low-range tests may pass, but larger real layer data will silently accumulate wrong scores
+- unsigned/signed interpretation mismatch -> class scores diverge only for a subset of neurons or channels
+
+### 5. Good/Base/Bad Cases
+- Good: explicit sign-extension is present on both multiplicand and multiplier before the multiply.
+- Base: standalone `fc_neuron_tb` plus integrated `l5_top_tb` both pass.
+- Bad: cast the multiply result only after the multiply has already been width-truncated.
+
+### 6. Tests Required
+- Re-run standalone `fc_neuron_tb`.
+- Re-run integrated `l5_top_tb`.
+- Ensure a case with larger source activations and negative weights still produces `err_cnt=0`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+beat_sum_comb = beat_sum_comb
+              + $signed(in_lane * weight_lane);
+```
+
+#### Correct
+```verilog
+beat_sum_comb = beat_sum_comb
+              + $signed(
+                    $signed({{WEIGHT_WIDTH{in_lane[DATA_WIDTH-1]}}, in_lane})
+                  * $signed({{DATA_WIDTH{weight_lane[WEIGHT_WIDTH-1]}}, weight_lane})
+                );
+```
+
 ### 4. Validation & Error Matrix
 - image data arrives while no address is valid -> buffer must wait for a valid address
 - address advances without a matching image beat -> address/data alignment bug
@@ -461,7 +833,7 @@ end
 ## Scenario: First-Layer Serial Convolution Kernel Handshake
 
 ### 1. Scope / Trigger
-- Trigger: `my_cnnV4` first-layer arithmetic core is split from BRAM addressing and implemented as `conv_l1`, a stream-fed serial convolution kernel.
+- Trigger: `my_cnnV4` first-layer arithmetic core is split from BRAM addressing and implemented as `conv_core`, a stream-fed serial convolution kernel.
 
 ### 2. Signatures
 - Weight side:
@@ -532,10 +904,10 @@ assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 - PC test directory:
   - `my_cnnV4/my_cnnV4_PCtest/`
 - Current first sample files:
-  - `conv_l1_case0.py`
-  - `conv_l1_case0_pixels.txt`
-  - `conv_l1_case0_weights.txt`
-  - `conv_l1_case0_result.txt`
+  - `conv_core_case0.py`
+  - `conv_core_case0_pixels.txt`
+  - `conv_core_case0_weights.txt`
+  - `conv_core_case0_result.txt`
 - RTL TB inputs:
   - `WEIGHT_FILE`
   - `RESULT_FILE`
@@ -577,7 +949,7 @@ assign acc_next = (sample_cnt == 0) ? mult_term_ext : (acc_reg + mult_term_ext);
 ### Required File Contract
 
 - PC script output:
-  - `conv_l1_case0_feature_map.txt`
+  - `conv_core_case0_feature_map.txt`
 - File content:
   - `24` rows
   - each row contains `24` signed decimal convolution results
@@ -740,11 +1112,11 @@ assign lane1_addr2d = win_addr2d;
 
 ## Convention: First-Layer Integration Top Uses Single Outstanding Read
 
-**What**: The first bring-up top for `my_cnnV4` may keep the data path simple by allowing only one outstanding read from `img_in_buf` at a time before feeding `conv_l1`.
+**What**: The first bring-up top for `my_cnnV4` may keep the data path simple by allowing only one outstanding read from `img_in_buf` at a time before feeding `conv_core`.
 
 **Why**:
 - `img_in_buf` returns one pixel per accepted read address.
-- `conv_l1` consumes one pixel stream beat at a time and may stall on output hold.
+- `conv_core` consumes one pixel stream beat at a time and may stall on output hold.
 - A single-outstanding-read bridge is the lowest-risk way to verify the full layer boundary before introducing a richer reader or pipelined prefetch.
 
 ### Required Behavior
@@ -753,11 +1125,11 @@ assign lane1_addr2d = win_addr2d;
   - scan is active
   - source frame is valid
   - no prior read response is pending
-  - no buffered pixel is waiting for `conv_l1`
-  - `conv_l1.in_ready=1`
+  - no buffered pixel is waiting for `conv_core`
+  - `conv_core.in_ready=1`
 - After one read request is accepted, the top must remember whether that request was the window-last beat.
-- When `img_in_buf.rd_valid=1`, the returned pixel is buffered into one local register stage and then forwarded to `conv_l1`.
-- The top must not start the next read request until the buffered pixel has been consumed by `conv_l1`.
+- When `img_in_buf.rd_valid=1`, the returned pixel is buffered into one local register stage and then forwarded to `conv_core`.
+- The top must not start the next read request until the buffered pixel has been consumed by `conv_core`.
 
 ### Good Pattern
 
@@ -784,7 +1156,7 @@ end
 ### Wrong Pattern
 
 - Do not let `win_addr_mgr` free-run while `img_in_buf` responses are still pending.
-- Do not feed `conv_l1` directly from `img_in_buf.rd_data` without a valid-holding stage.
+- Do not feed `conv_core` directly from `img_in_buf.rd_data` without a valid-holding stage.
 - Do not use `image_tready=1` at the top boundary unless the write-side address is also valid for the same beat.
 
 ### Tests Required
@@ -802,7 +1174,7 @@ end
 **Why**:
 - For `5x5 stride=1` first-layer convolution, one input window maps directly to one output point.
 - The write address is exactly the current window base coordinate `{base_row, base_col}`.
-- Keeping this relation in one first-layer controller reduces top-level glue without pushing address ownership back into `conv_l1`.
+- Keeping this relation in one first-layer controller reduces top-level glue without pushing address ownership back into `conv_core`.
 
 ### Required Interface Contract
 
@@ -841,7 +1213,7 @@ assign conv_out_ready_int = ext_out_ready
 
 assign ofmap_out_fire = conv_out_valid && conv_out_ready_int;
 
-l1_addr_mgr u_l1_addr_mgr(
+win_addr_mgr u_win_addr_mgr(
     .rd_addr_ready(l1_rd_addr_ready),
     .out_fire(ofmap_out_fire),
     .wr_addr2d(l1_wr_addr2d),
@@ -852,12 +1224,12 @@ l1_addr_mgr u_l1_addr_mgr(
 ### Wrong Pattern
 
 - Do not increment the output write address immediately after the `25th` read beat if the convolution result has not been written yet.
-- Do not make `conv_l1` count full-map output coordinates by itself.
+- Do not make `conv_core` count full-map output coordinates by itself.
 - Do not reuse the generic `win_addr_mgr` unchanged when the design also needs output-write hold behavior.
 
 ### Tests Required
 
-- Standalone `l1_addr_mgr_tb` must verify `25` reads followed by one held write address for each output point.
+- Standalone `win_addr_mgr_tb` must verify `25` reads followed by one held write address for each output point.
 - Full-chain `l1_top_tb` must verify output write coordinates match the expected output-map traversal.
 - Final write must assert `wr_last` on output point `(23,23)` for the `28x28`, `K=5`, `stride=1` first-layer case.
 
@@ -868,7 +1240,7 @@ l1_addr_mgr u_l1_addr_mgr(
 **What**: Before ReLU / quantization / pooling are inserted, the first-layer output ping-pong buffer stores raw `32bit signed` convolution sums.
 
 **Why**:
-- `conv_l1` currently exports signed `32bit` accumulation results.
+- `conv_core` currently exports signed `32bit` accumulation results.
 - The first baseline should preserve numerical truth across RTL / PC-golden comparison.
 - Early truncation would make bring-up harder and hide arithmetic mismatches.
 
@@ -896,7 +1268,7 @@ l1_addr_mgr u_l1_addr_mgr(
 
 ## Convention: First-Layer 1x6 Broadcast Top
 
-**What**: The current first-layer top may use one shared image-read path and one shared spatial address manager, then broadcast the same `5x5` pixel stream to `6` parallel `conv_l1` lanes.
+**What**: The current first-layer top may use one shared image-read path and one shared spatial address manager, then broadcast the same `5x5` pixel stream to `6` parallel `conv_core` lanes.
 
 **Why**:
 - First-layer `Cin=1`, so every output channel reads the same input window coordinates.
@@ -907,12 +1279,12 @@ l1_addr_mgr u_l1_addr_mgr(
 
 - Shared image side:
   - one `img_in_buf`
-  - one `l1_addr_mgr`
+  - one `win_addr_mgr`
 - Weight side:
   - one serialized weight input stream
   - one lane-select input `cfg_weight_lane`
 - Compute side:
-  - `6` instances of `conv_l1`
+  - `6` instances of `conv_core`
 - Output side:
   - `6` instances of `pingpong_img_buf`
 
@@ -941,7 +1313,7 @@ assign all_lane_commit_fire = out_ready
                            && all_lane_out_valid
                            && all_lane_ofmap_wr_ready;
 
-l1_addr_mgr u_l1_addr_mgr(
+win_addr_mgr u_win_addr_mgr(
     .out_fire(all_lane_commit_fire)
 );
 ```
@@ -950,7 +1322,7 @@ l1_addr_mgr u_l1_addr_mgr(
 
 - Do not instantiate `6` separate spatial window address managers for first-layer `Cin=1`.
 - Do not allow lane 0 to advance the output write address before the other `5` lanes commit the same output point.
-- Do not couple output-channel counting into `conv_l1`.
+- Do not couple output-channel counting into `conv_core`.
 - Do not let each lane fetch its own image window independently in this first baseline.
 
 ### Tests Required
@@ -984,12 +1356,12 @@ l1_addr_mgr u_l1_addr_mgr(
 - `cfg_weight_lane` selects which lane accepts the current serialized weight beat.
 - A lane not selected by `cfg_weight_lane` must ignore that beat.
 - The aggregate output-point commit occurs only when all `6` lanes and all `6` downstream output buffers are ready on the same cycle.
-- `l1_addr_mgr.out_fire` is driven by this aggregate commit, not by any single lane.
+- `win_addr_mgr.out_fire` is driven by this aggregate commit, not by any single lane.
 - Each lane output buffer stores one full `24x24` feature map for that lane.
 
 ### 4. Validation & Error Matrix
 - advance address manager after only one lane commits -> lane-to-lane output coordinate skew
-- duplicate `l1_addr_mgr` per lane -> architectural duplication and control drift
+- duplicate `win_addr_mgr` per lane -> architectural duplication and control drift
 - lane accepts weights while not selected by `cfg_weight_lane` -> wrong kernel image
 - expose aggregate `weight_loaded=1` before all `6` lanes are loaded -> scan may start too early
 - write all lane outputs into one shared output buffer -> output-channel ownership violation
@@ -1032,7 +1404,7 @@ assign all_lane_commit_fire = out_ready
 
 **Why**:
 - It removes manual per-lane drive logic from the top-level TB and future control path.
-- It keeps `conv_l1` unchanged and preserves the existing lane-local weight ownership.
+- It keeps `conv_core` unchanged and preserves the existing lane-local weight ownership.
 - It provides one clear boundary where stream-level validation such as final `last` timing can be checked.
 
 ### Required Interface Contract
@@ -1071,7 +1443,7 @@ assign lane_cfg_weight_last = lane_cfg_weight_valid && (cur_weight_idx == WIN_SI
 
 - Do not require the upstream to manually drive both `cfg_weight_lane` and `cfg_weight_last` for every lane-group beat.
 - Do not let an early external `cfg_weight_last` reset the internal lane counters immediately.
-- Do not merge weight-stream distribution into `conv_l1`.
+- Do not merge weight-stream distribution into `conv_core`.
 
 ### Tests Required
 
@@ -1102,7 +1474,7 @@ assign lane_cfg_weight_last = lane_cfg_weight_valid && (cur_weight_idx == WIN_SI
 - `l1_top_w` owns the adaptation from continuous stream weights to the existing `l1_core` per-lane weight-load contract.
 - `l1_top` remains the compute/integration core and should not absorb the stream-distribution logic.
 - `cfg_weight_done` at wrapper level means the full `6 * 25` weight stream has been accepted.
-- `weight_loaded` at wrapper level still means all six `conv_l1` lanes report loaded.
+- `weight_loaded` at wrapper level still means all six `conv_core` lanes report loaded.
 
 ### 4. Validation & Error Matrix
 - wrapper bypasses distributor and still requires manual `cfg_weight_lane` externally -> wrong integration boundary
@@ -1111,7 +1483,7 @@ assign lane_cfg_weight_last = lane_cfg_weight_valid && (cur_weight_idx == WIN_SI
 
 ### 5. Good/Base/Bad Cases
 - Good: upstream sends the same `25`-weight file six times in sequence and wrapper produces the same six feature maps.
-- Base: current TB reuses `conv_l1_case0_weights.txt` for all six lanes and verifies lane 0 against the PC golden map.
+- Base: current TB reuses `conv_core_case0_weights.txt` for all six lanes and verifies lane 0 against the PC golden map.
 - Bad: wrapper mutates the accepted weight order relative to the input stream.
 
 ### 6. Tests Required
@@ -1222,7 +1594,7 @@ assign weight_dst2d = {layer_id, kernel_id};
 **What**: At current V4 architecture stage, weight distribution is a startup transaction. All required layer weights for the current run are loaded first, then normal image / feature-map compute is allowed to start.
 
 **Why**:
-- This matches the current `conv_l1` contract: compute waits for weight-ready state.
+- This matches the current `conv_core` contract: compute waits for weight-ready state.
 - It reduces overlap complexity during bring-up.
 - It keeps the first full system easier to debug before introducing runtime weight switching.
 
@@ -1414,7 +1786,7 @@ assign gw_weight_ready     = gw_is_l1_target ? l1_cfg_weight_ready : 1'b1;
 ### 3. Contracts
 - `img_in_addr_mgr` owns only external image write traversal.
 - `img_in_buf` owns image storage and 2D-to-1D RAM translation.
-- `l1_addr_mgr` owns convolution spatial read traversal and output-point write traversal.
+- `win_addr_mgr` owns convolution spatial read traversal and output-point write traversal.
 - `l1_core` owns the internal glue among image-buffer reads, six serial convolution lanes, and six output ping-pong buffers.
 - Production-facing `l1_top` must not export verification-only ports such as:
   - `dbg_*`
@@ -1435,7 +1807,7 @@ assign gw_weight_ready     = gw_is_l1_target ? l1_cfg_weight_ready : 1'b1;
 - re-expose `dbg_*` or lane-local internal status on `l1_top` -> top-level coupling regression
 - downstream logic depends on internal conv result pulses instead of `ofmap_rd_*` -> layer-boundary contract violation
 - `scan_ready=1` before global preload completion -> compute may start before startup preload finishes
-- duplicate address generation inside `l1_top` instead of using `img_in_addr_mgr` or `l1_addr_mgr` -> ownership drift
+- duplicate address generation inside `l1_top` instead of using `img_in_addr_mgr` or `win_addr_mgr` -> ownership drift
 
 ### 5. Good/Base/Bad Cases
 - Good: later modules treat `l1_top` as a six-lane feature-map producer with readable output buffers and do not depend on internal debug behavior.
@@ -1489,7 +1861,7 @@ module l1_top(
 ## Scenario: Compute Kernels Must Not Re-Own Address Generation
 
 ### 1. Scope / Trigger
-- Trigger: later CNN stages such as `relu_pool` may be tempting to expose upstream read-address ports directly from the compute module, even though the project already established separate address-manager ownership for `conv_l1` and layer wrappers.
+- Trigger: later CNN stages such as `relu_pool` may be tempting to expose upstream read-address ports directly from the compute module, even though the project already established separate address-manager ownership for `conv_core` and layer wrappers.
 
 ### 2. Signatures
 - Compute-kernel style interface:
@@ -1502,7 +1874,7 @@ module l1_top(
 
 ### 3. Contracts
 - In this project, address generation belongs to dedicated address-manager modules or to a thin layer wrapper that instantiates those address managers.
-- Compute kernels such as `conv_l1` and future `relu_pool`-style arithmetic cores must not become the formal owner of upstream read addresses or downstream write addresses.
+- Compute kernels such as `conv_core` and future `relu_pool`-style arithmetic cores must not become the formal owner of upstream read addresses or downstream write addresses.
 - If one integrated bring-up module temporarily bundles address generation with compute for faster verification, that module is a transitional wrapper, not the final compute-kernel boundary.
 - The stable architectural split is:
   - address manager decides which spatial coordinates are needed
@@ -1511,14 +1883,14 @@ module l1_top(
 - Later-stage wrappers may still expose address signals outward when they are acting as the orchestrating layer boundary, but the inner arithmetic kernel should remain address-agnostic.
 
 ### 4. Validation & Error Matrix
-- arithmetic core exports `rd_addr2d` / `wr_addr2d` as part of its long-term public contract -> coupling regression against `conv_l1` style
+- arithmetic core exports `rd_addr2d` / `wr_addr2d` as part of its long-term public contract -> coupling regression against `conv_core` style
 - both wrapper and compute kernel try to own spatial progression -> duplicated counters and state drift
 - buffer stops being a passive storage element and starts inferring traversal order -> ownership violation
 - later layer cannot reuse the same compute kernel under a different address schedule -> extensibility loss
 
 ### 5. Good/Base/Bad Cases
-- Good: one wrapper instantiates `l1_addr_mgr`, drives buffer read addresses, streams returned pixels into a compute-only `relu_pool` kernel, and separately writes the pooled outputs to the next buffer.
-- Base: `relu_pool_l1` is allowed to exist as a wrapper-level integration block that instantiates `l1_addr_mgr`, a compute-only `relu_pool_core`, and the destination ping-pong buffer. The inner arithmetic kernel still remains address-agnostic.
+- Good: one wrapper instantiates `win_addr_mgr`, drives buffer read addresses, streams returned pixels into a compute-only `relu_pool` kernel, and separately writes the pooled outputs to the next buffer.
+- Base: `relu_pool_l1` is allowed to exist as a wrapper-level integration block that instantiates `win_addr_mgr`, a compute-only `relu_pool_core`, and the destination ping-pong buffer. The inner arithmetic kernel still remains address-agnostic.
 - Bad: copy the current interim interface into every future pool kernel and let each compute block directly own upstream read addresses.
 
 ### 6. Tests Required
@@ -1557,11 +1929,11 @@ module relu_pool_core(
 ## Scenario: Pooling Reuses Generic Window Address Manager
 
 ### 1. Scope / Trigger
-- Trigger: the single-channel `relu_pool_l1` stage needs `2x2 stride=2` window traversal, but the project already has a reusable `l1_addr_mgr` for generic window scanning.
+- Trigger: the single-channel `relu_pool_l1` stage needs `2x2 stride=2` window traversal, but the project already has a reusable `win_addr_mgr` for generic window scanning.
 
 ### 2. Signatures
 - Reused manager:
-  - `l1_addr_mgr`
+  - `win_addr_mgr`
 - Pool stage interface:
   - source side: `src_rd_en`, `src_rd_addr2d`, `src_rd_valid`, `src_rd_data`
   - output-buffer write side: `wr_valid`, `wr_addr2d`, `wr_last`, `wr_ready`
@@ -1571,31 +1943,31 @@ module relu_pool_core(
   - `cur_base_row`, `cur_base_col`
 
 ### 3. Contracts
-- Pooling must reuse `l1_addr_mgr` for window read traversal when the behavior is still generic sliding-window traversal.
+- Pooling must reuse `win_addr_mgr` for window read traversal when the behavior is still generic sliding-window traversal.
 - Do not create a second dedicated pool-only address manager when `IMG_W`, `IMG_H`, `K`, and `STRIDE` parameterization is sufficient.
 - For `2x2 stride=2` pooling over a `24x24` source map:
   - read window bases are `0, 2, 4, ... , 22`
   - output write coordinates are `0..11`
-- Therefore, the pool stage must not forward `l1_addr_mgr.wr_addr2d` directly into the output ping-pong buffer.
+- Therefore, the pool stage must not forward `win_addr_mgr.wr_addr2d` directly into the output ping-pong buffer.
 - The pool stage must derive pooled output coordinates from the current base coordinate:
   - `pool_wr_row = cur_base_row / STRIDE`
   - `pool_wr_col = cur_base_col / STRIDE`
   - `pool_wr_addr2d = {pool_wr_row, pool_wr_col}`
-- `wr_last` may still be reused directly from `l1_addr_mgr`, because frame completion order is unchanged.
+- `wr_last` may still be reused directly from `win_addr_mgr`, because frame completion order is unchanged.
 
 ### 4. Validation & Error Matrix
-- instantiate a dedicated `pool_addr_mgr` that duplicates `l1_addr_mgr` traversal logic -> code reuse regression
-- connect `l1_addr_mgr.wr_addr2d` directly to the pool output buffer for `stride=2` pooling -> output addresses become `0,2,4...` and overflow the `12x12` map contract
+- instantiate a dedicated `pool_addr_mgr` that duplicates `win_addr_mgr` traversal logic -> code reuse regression
+- connect `win_addr_mgr.wr_addr2d` directly to the pool output buffer for `stride=2` pooling -> output addresses become `0,2,4...` and overflow the `12x12` map contract
 - derive pooled write coordinates from `rd_addr2d` instead of base coordinates -> write address may wobble inside one `2x2` window
 - reuse `wr_last` but change traversal order -> completion pulse may no longer align with final pooled output point
 
 ### 5. Good/Base/Bad Cases
-- Good: `relu_pool_l1` reuses `l1_addr_mgr`, reads source windows at `(0,0)~(1,1)`, `(0,2)~(1,3)`, and writes pooled outputs to `(0,0)`, `(0,1)`, ... `(11,11)`.
+- Good: `relu_pool_l1` reuses `win_addr_mgr`, reads source windows at `(0,0)~(1,1)`, `(0,2)~(1,3)`, and writes pooled outputs to `(0,0)`, `(0,1)`, ... `(11,11)`.
 - Base: one generic address manager services both first-layer convolution and single-channel pooling with different parameter sets.
 - Bad: maintain one traversal module for convolution and another nearly identical traversal module for pooling.
 
 ### 6. Tests Required
-- Behavioral TB must compile with `l1_addr_mgr.v` and without any `pool_addr_mgr.v` dependency.
+- Behavioral TB must compile with `win_addr_mgr.v` and without any `pool_addr_mgr.v` dependency.
 - `relu_pool_l1_tb` must still end with:
   - `SUMMARY: err_cnt=0 done_seen=1 src_done_seen=1`
 - Console traces should show pooled write addresses covering the `12x12` output map in raster order.
@@ -1626,7 +1998,7 @@ assign pool_wr_addr2d = {pool_wr_row, pool_wr_col};
   - next ReLU+pool stage -> `l2_*`
   - first-layer plus next-stage joint bring-up / integration -> `*_l1l2` or `l1l2_*`
 - Typical examples:
-  - single-stage compute / wrapper: `conv_l1`, `relu_pool_l2`
+  - single-stage compute / wrapper: `conv_core`, `relu_pool_l2`
   - same-stage top: `l1_top`, `l2_top`
   - cross-stage integration TB/top: `l1l2_top`, `l1l2_top_tb`
 
@@ -1871,56 +2243,56 @@ $display("SIM_WIN idx=%0d row=%0d col=%0d lane0=%0d lane1=%0d lane2=%0d lane3=%0
 ## Scenario: Third-Layer `6in12out` Reuses `72` First-Layer Conv Slices
 
 ### 1. Scope / Trigger
-- Trigger: the project is moving from verified `l1 + l2` into the third convolution stage, and the chosen first implementation route is to reuse the existing `conv_l1` arithmetic slice directly instead of redesigning a new `6in1out` kernel first.
+- Trigger: the project is moving from verified `l1 + l2` into the third convolution stage, and the chosen first implementation route is to reuse the existing `conv_core` arithmetic slice directly instead of redesigning a new `6in1out` kernel first.
 
 ### 2. Signatures
 - Reused arithmetic slice:
-  - `conv_l1`
+  - `conv_core`
 - Third-layer logical output grouping:
   - `12` logical output kernels
   - each logical output kernel consumes `6` input channels
 - Third-layer physical compute grouping:
   - `12` groups
-  - each group contains `6` instances of `conv_l1`
+  - each group contains `6` instances of `conv_core`
   - total physical slice count = `72`
 - Weight preload meaning:
   - one logical third-layer output kernel owns `6 * 25 = 150` weights
-  - one physical `conv_l1` slice still owns only `25` weights
+  - one physical `conv_core` slice still owns only `25` weights
 
 ### 3. Contracts
-- In current architecture, `conv_l1` is a `1in1out` serial `5x5` convolution slice, not a full `Cin x Cout` kernel.
-- Therefore, true third-layer `6in12out` must not be modeled as only `12` unchanged `conv_l1` instances.
+- In current architecture, `conv_core` is a `1in1out` serial `5x5` convolution slice, not a full `Cin x Cout` kernel.
+- Therefore, true third-layer `6in12out` must not be modeled as only `12` unchanged `conv_core` instances.
 - The accepted first implementation is:
   - one shared window-address traversal for the current spatial output point
   - `6` parallel source feature-map reads for the `6` input channels
   - `12` logical output groups in parallel
-  - inside each logical output group, `6` `conv_l1` slices consume the `6` channel streams
+  - inside each logical output group, `6` `conv_core` slices consume the `6` channel streams
   - one local adder combines the `6` partial sums into one final `32bit` output result for that output channel
 - Interface hierarchy must stay two-level:
   - external / layer-facing view stays at `12` logical output kernels
-  - internal implementation may expand each logical output kernel into `6` physical `conv_l1` slices
+  - internal implementation may expand each logical output kernel into `6` physical `conv_core` slices
 - Global weight preload should still keep the logical destination meaning:
   - layer-local destination remains `12` output-kernel IDs
   - local third-layer wrapper is responsible for splitting one logical `150`-weight block into `6` physical `25`-weight slice loads
-- Address-generation ownership must remain outside `conv_l1`.
+- Address-generation ownership must remain outside `conv_core`.
 - The third-layer output buffer ownership should stay one buffer per logical output channel, not one buffer per physical slice.
 
 ### 4. Validation & Error Matrix
-- instantiate only `12` unchanged `conv_l1` blocks and call that `6in12out` -> functionally incomplete, because each output channel misses `5` input-channel partial sums
+- instantiate only `12` unchanged `conv_core` blocks and call that `6in12out` -> functionally incomplete, because each output channel misses `5` input-channel partial sums
 - expose `72` physical slice IDs directly as the long-term layer-facing top contract -> cross-layer weight and buffer ownership become harder to manage
 - give each physical slice its own spatial address manager -> duplicated control and channel-skew risk
 - store one physical slice result per buffer instead of summing `6` slices into one logical output -> wrong output feature-map meaning
-- push `6`-channel accumulation responsibility back into `conv_l1` without redesigning the module contract -> violates the chosen reuse-first route
+- push `6`-channel accumulation responsibility back into `conv_core` without redesigning the module contract -> violates the chosen reuse-first route
 
 ### 5. Good/Base/Bad Cases
-- Good: build one `l3_out_core` style wrapper that owns one logical output channel, instantiates `6` `conv_l1` slices, sums their results, and later replicate that wrapper `12` times.
+- Good: build one `l3_out_core` style wrapper that owns one logical output channel, instantiates `6` `conv_core` slices, sums their results, and later replicate that wrapper `12` times.
 - Base: even before the full `12`-output top exists, verification may begin from one logical `6in1out` output core that proves the reuse route is numerically correct.
 - Bad: flatten the whole third layer directly into one `72`-instance unstructured top with no logical-output grouping.
 
 ### 6. Tests Required
 - First verification step must target one logical output group:
   - `6` source channels
-  - `6` physical `conv_l1` slices
+  - `6` physical `conv_core` slices
   - `1` summed output
 - Assertions/check points for that step:
   - all `6` slices consume aligned window progress
@@ -1935,14 +2307,14 @@ $display("SIM_WIN idx=%0d row=%0d col=%0d lane0=%0d lane1=%0d lane2=%0d lane3=%0
 ### 7. Wrong vs Correct
 #### Wrong
 ```text
-6in12out = instantiate 12 unchanged conv_l1 blocks
+6in12out = instantiate 12 unchanged conv_core blocks
 ```
 
 #### Correct
 ```text
 6in12out = 12 logical output groups
-each logical output group = 6 unchanged conv_l1 slices + 1 local partial-sum combiner
-total physical conv_l1 count = 72
+each logical output group = 6 unchanged conv_core slices + 1 local partial-sum combiner
+total physical conv_core count = 72
 ```
 
 ---
@@ -1979,7 +2351,7 @@ total physical conv_l1 count = 72
 ### 3. Contracts
 - `l3_core` is a layer-local integration core, not the final global wrapper for third-layer preload and cross-layer orchestration.
 - `l3_core` must reuse:
-  - one `l1_addr_mgr` parameterized for `12x12`, `K=5`, `stride=1`
+  - one `win_addr_mgr` parameterized for `12x12`, `K=5`, `stride=1`
   - `12` instances of `l3_out_core`
   - `12` instances of `pingpong_img_buf` for `8x8` signed `32bit` outputs
 - The shared address manager owns only one spatial traversal stream for the current window.
@@ -2001,7 +2373,7 @@ total physical conv_l1 count = 72
 ### 5. Good/Base/Bad Cases
 - Good: `l3_core` reads one `5x5` window position across all `6` input channels, feeds all `12` output groups in parallel, then writes one `8x8` output point into each of `12` output buffers.
 - Base: `l3_core_tb` may instantiate `6` local source ping-pong buffers, preload them with synthetic `12x12` maps, then verify all `12` `8x8` outputs against TB-side software convolution.
-- Bad: duplicate `l1_addr_mgr` twelve times and let each output group walk the source feature maps independently.
+- Bad: duplicate `win_addr_mgr` twelve times and let each output group walk the source feature maps independently.
 
 ### 6. Tests Required
 - `l3_core_tb` must verify:
@@ -2073,7 +2445,7 @@ All 12 third-layer output groups share one window traversal and commit one outpu
 - `weight_loaded` at `l3_top` level means `l3_core` reports all `12` third-layer logical output groups loaded.
 
 ### 4. Validation & Error Matrix
-- forward one `150`-weight logical kernel into `l3_core` without splitting into `6 x 25` slices -> internal `conv_l1` slices receive wrong load boundaries
+- forward one `150`-weight logical kernel into `l3_core` without splitting into `6 x 25` slices -> internal `conv_core` slices receive wrong load boundaries
 - generate local `cfg_weight_last` only on weight index `149` -> only one internal slice sees end-of-load, other slices never report loaded
 - let non-third-layer global targets wait on third-layer local readiness -> unnecessary cross-layer preload coupling
 - allow `start` before global preload completion -> third-layer compute may begin before all logical kernels are loaded
@@ -2325,4 +2697,89 @@ l4_top_tb already computes the expected pool map internally, so a PC golden chec
 #### Correct
 ```text
 Use the PC script as the golden source, let l4_top_tb read the same result file, and compare PC_L4 versus RTL_L4 line by line.
+```
+
+---
+
+## Scenario: `my_cnnV4` Five-Top Bring-Up Path Must Be Preserved Before Building The Global CNN Top
+
+### 1. Scope / Trigger
+- Trigger: `l1_top` ~ `l5_top` have all been separately brought up and behaviorally verified, and the next step is to build the final CNN-level wrapper without collapsing the layer boundaries back into one monolithic controller.
+
+### 2. Signatures
+- First-layer top:
+  - `l1_top`
+  - owns image input load, first-layer weight preload, `1in6out` convolution run, and `6` output feature-map buffer writes
+- First relu+pool top:
+  - `l2_top`
+  - reads `6` first-layer output buffers and produces `6` pooled `12x12` maps
+- Third-layer conv top:
+  - `l3_top`
+  - reads `6` pooled `12x12` maps, accepts global third-layer weights, and produces `12` convolution output maps
+- Fourth-layer relu+pool top:
+  - `l4_top`
+  - reads `12` third-layer output buffers and produces `12` pooled `4x4` maps
+- FC top:
+  - `l5_top`
+  - reads `12` pooled `4x4` maps, accepts FC global weights, and produces `10` final scores
+
+### 3. Contracts
+- The bring-up order is architectural, not accidental:
+  - `l1_top` is the first V4 baseline and defines the reusable contracts for image input buffering, shared window address generation, convolution run handshake, and output feature-map writeback into ping-pong buffers.
+  - `l2_top` proves that relu+pool is a separate next-stage boundary and must consume only the completed first-layer feature maps, not first-layer internal timing.
+  - `l3_top` proves that the reused `conv_core` slice must scale through logical output grouping:
+    - one logical output channel = `6` reused `conv_core` slices + one local accumulation boundary
+    - the top then replicates that logical-output unit to `12` outputs
+  - `l4_top` proves that the relu+pool path is reusable again at a different map size and lane count, without creating a new quantization rule.
+  - `l5_top` proves that the FC stage is a separate contract:
+    - upstream data source is `12 x 4x4`
+    - runtime input beat format is `32` beats, each beat carrying `6` signed `8bit` values
+    - downstream result is `10` parallel neuron scores
+- Dependency ownership must stay layered:
+  - `l2_top` depends on `l1_top` output buffer format, but not on `l1_top` internal cycle counts
+  - `l3_top` depends on `l2_top` output feature-map layout and on the first-layer-style `conv_core` slice contract
+  - `l4_top` depends on `l3_top` output buffer format, but reuses the same relu+pool wrapper rule already proven by `l2_top`
+  - `l5_top` depends on `l4_top` output buffer format and on the FC preload contract from `wgt_dist_global`
+- The future global CNN top must only own:
+  - global preload ordering
+  - layer start / busy / done sequencing
+  - inter-layer ping-pong bank role hand-off
+  - final result collection
+- The future global CNN top must not reopen layer-local scheduling that already belongs inside the five verified tops.
+
+### 4. Validation & Error Matrix
+- rebuild the global design by wiring raw cores directly and bypassing the five tops -> layer ownership becomes unclear again and V1/V3-style coupling returns
+- make a downstream top depend on upstream internal cycle timing instead of buffer-valid / handshake status -> integration becomes timing-fragile
+- treat `l3_top` as `12` bare convolution instances instead of `12` logical outputs each built from `6` slices -> `6in12out` math and weight ownership both become wrong
+- change relu quantization or pool traversal only because the map size changes from `l2_top` to `l4_top` -> stage-to-stage functional drift
+- let `l5_top` consume pooled data without the fixed `32`-beat FC runtime contract -> FC weights and runtime indexing drift apart
+
+### 5. Good/Base/Bad Cases
+- Good: each top is treated as a stable layer-boundary block, and the next integration step composes those five tops rather than replacing them.
+- Base: verification follows the same order as development: `l1_top -> l2_top -> l3_top -> l4_top -> l5_top`, with each later stage reusing already-proven lower-stage contracts.
+- Bad: the five tops are treated as temporary TB wrappers only, and the final CNN top is rebuilt from raw address managers, raw conv slices, raw pool cores, and raw FC neurons.
+
+### 6. Tests Required
+- Keep one regression entry per major stage:
+  - `l1_top_tb`: first-layer image load, preload, `6`-lane convolution, and output-buffer writeback
+  - `l1l2_top_tb`: first convolution plus first relu+pool integration
+  - `l3_top_tb`: third-layer global-weight translation, `6in12out` grouped convolution, and PC golden comparison
+  - `l4_top_tb`: `12`-lane relu+pool reuse and PC golden comparison
+  - `l5_top_tb`: FC preload plus `12 x 4x4 -> 10` classification result check
+- Cleanup rules before global top integration:
+  - keep handwritten RTL, top-level TBs, and PC check scripts
+  - simulator-generated work libraries, temporary waveform databases, and PC-generated intermediate `.txt` outputs may be deleted because they are reproducible
+- Before starting the global CNN top, verify:
+  - all five tops still build from source directories only
+  - no required source file exists only inside simulator work directories or generated output directories
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+The final CNN top should ignore l1_top~l5_top and directly reconnect all raw submodules, because those tops were only temporary simulation shells.
+```
+
+#### Correct
+```text
+The final CNN top should treat l1_top~l5_top as stable layer-boundary blocks, because each top already locked one reusable interface and one verified stage behavior.
 ```

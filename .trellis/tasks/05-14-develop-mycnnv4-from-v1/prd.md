@@ -1,4 +1,4 @@
-# Develop my_cnnV4 from my_cnnV1 baseline
+﻿# Develop my_cnnV4 from my_cnnV1 baseline
 
 ## Goal
 
@@ -28,6 +28,10 @@ Develop `my_cnnV4` using `my_cnn` as the functional baseline, with the first pri
   * layer2: `in6 -> out12`, instantiate 12 convolution kernels and output 12 channels in parallel
   * then 12-channel pooling
   * then fully connected classification
+* The user clarified a naming-boundary rule for future V4 work:
+  * `l1` means the first convolution layer only
+  * ReLU+pool after first convolution belongs to the next stage naming space and should be treated as `l2`
+  * any joint first-conv plus relu+pool integration file / top / TB should use `l1l2` naming
 
 ## Assumptions (temporary)
 
@@ -57,7 +61,7 @@ Develop `my_cnnV4` using `my_cnn` as the functional baseline, with the first pri
 * Redesign internal module boundaries so compute, buffering, and scheduling can evolve more independently.
 * Implement V4 first as a layer-specific architecture:
   * layer1 convolution block for `1 -> 6`
-  * layer1 activation/pooling block
+  * next-stage relu/pool block after layer1 output, named in `l2` space
   * layer2 convolution block for `6 -> 12`
   * layer2 pooling block
   * fully connected block
@@ -146,7 +150,7 @@ Additional V4 direction notes from the user:
 * V4 should first be built as a layer-specific structure rather than a generic engine.
 * Baseline layer breakdown:
   * layer1 convolution: input 1 channel, output 6 channels
-  * layer1 activation + pooling
+  * relu + pooling after first convolution is a separate next-stage boundary and should use `l2` naming
   * layer2 convolution: input 6 channels, output 12 channels
   * layer2 pooling on 12 channels
   * fully connected output stage
@@ -166,3 +170,78 @@ Observed risks / likely V4 redesign pressure:
 * `my_cnnV3` shows partial architectural experimentation, but the resulting control path is still tightly coupled and may not be the clean V4 target directly
 * If V4 only swaps in a new convolution module without redefining control boundaries, it will likely repeat the V3 failure mode
 * Layer2 resource cost can explode depending on whether `12` output channels also implies fully parallel accumulation across `6` input channels
+
+## Current V4 Stage Summary
+
+### Stage 1: `l1_top` first-layer baseline
+
+* Goal: prove the new V4 first-layer structure without reusing the V1 sliding-window timing contract.
+* Fixed boundaries:
+  * external image input path stays independent
+  * image input buffer owns storage only
+  * address manager owns window traversal only
+  * `conv_core` owns serial `5x5` MAC only
+  * first-layer top owns `6` parallel output-channel instances and output-buffer writeback
+* Result:
+  * completed and behaviorally verified
+  * established the baseline contracts for image load, weight preload, window address broadcast, and `6` output feature-map generation
+
+### Stage 2: `l2_top` first relu+pool boundary
+
+* Goal: split relu+pool into the next stage instead of burying it inside first-layer convolution timing.
+* Fixed boundaries:
+  * `l2_top` reads only completed `l1_top` feature maps
+  * single-channel relu+pool wrapper is reusable and lane-local
+  * top-level aggregation is done by parallel lane replication, not by rewriting compute rules
+* Result:
+  * completed and behaviorally verified
+  * confirmed the naming and structural rule that first conv is `l1`, while relu+pool after it belongs to `l2`
+
+### Stage 3: `l3_top` third-layer `6in12out` convolution
+
+* Goal: reuse the first-layer convolution slice for the `6in12out` stage while keeping output-channel parallelism explicit.
+* Fixed boundaries:
+  * one logical output channel is built from `6` reused `conv_core` slices plus a local accumulation boundary
+  * `12` logical output channels are then instantiated in parallel
+  * global weight stream is translated into third-layer local slice loads by the layer top
+* Result:
+  * completed and behaviorally verified
+  * PC golden and RTL output have been cross-checked for full `12 x 8x8` maps
+  * proved the reuse route for `72` physical first-layer-style conv slices
+
+### Stage 4: `l4_top` third-layer output relu+pool
+
+* Goal: reuse the already-proven relu+pool rule on the `12`-lane `8x8 -> 4x4` stage.
+* Fixed boundaries:
+  * no new quantization rule is introduced
+  * the same relu clamp plus arithmetic shift plus `2x2 stride2` max-pool rule is reused
+  * top-level scaling is by `12` parallel lanes
+* Result:
+  * completed and behaviorally verified
+  * PC golden and RTL output have been cross-checked for full `12 x 4x4` maps
+
+### Stage 5: `l5_top` FC top
+
+* Goal: finish the current layered V4 chain with a standalone FC stage that still follows the V4 preload-plus-runtime-stream contract.
+* Fixed boundaries:
+  * upstream source is `12` pooled `4x4` feature maps
+  * one shared FC address manager controls grouped feature reads
+  * `10` parallel FC neurons each own one output score
+  * global weight stream is extended to FC targets and split by the layer top before runtime starts
+* Result:
+  * completed and behaviorally verified
+  * full directed TB passed with `err_cnt=0`
+  * FC signed multiply-width issue was identified and fixed before this stage was considered stable
+
+## Ready For Global CNN Top
+
+* The current reusable layer tops are:
+  * `l1_top`
+  * `l2_top`
+  * `l3_top`
+  * `l4_top`
+  * `l5_top`
+* The next integration target should be a CNN-level wrapper that:
+  * sequences preload and run order across the five verified tops
+  * manages inter-layer ping-pong bank role hand-off
+  * preserves the already-proven layer-local contracts instead of reopening local scheduling inside the global wrapper

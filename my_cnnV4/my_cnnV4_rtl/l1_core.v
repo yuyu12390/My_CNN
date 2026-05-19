@@ -41,38 +41,10 @@ module l1_core
     output cfg_weight_ready,                               // 当前选中卷积核权重准备好
     output image_tready,                                   // 图像输入准备好
     output scan_ready,                                     // 扫描可启动
-    output cfg_weight_done,                                // 任一路权重装载完成脉冲
-    output img_wr_done,                                    // 图像写完一帧脉冲
     output img_frame_valid,                                // 图像帧有效
     output scan_busy,                                      // 扫描忙
     output reg scan_done,                                  // 扫描完成脉冲
-    output out_valid,                                      // 6 路结果同时有效
-    output signed [OUT_WIDTH-1:0] out_data,                // 0 号卷积核结果
     output weight_loaded,                                  // 6 路权重全部装好
-    output conv_busy,                                      // 任一路卷积核忙
-    output [LANE_NUM-1:0] lane_cfg_weight_ready,           // 各路权重准备好
-    output [LANE_NUM-1:0] lane_cfg_weight_done,            // 各路权重装载完成脉冲
-    output [LANE_NUM-1:0] lane_weight_loaded,              // 各路权重装好
-    output [LANE_NUM-1:0] lane_conv_busy,                  // 各路卷积核忙
-    output [LANE_NUM-1:0] lane_out_valid,                  // 各路结果有效
-    output signed [LANE_NUM*OUT_WIDTH-1:0] lane_out_data,  // 各路结果数据
-    output [ADDR2D_WIDTH-1:0] dbg_img_wr_addr2d,           // 调试写二维地址
-    output [ADDR2D_WIDTH-1:0] dbg_win_addr2d,              // 调试读二维地址
-    output dbg_win_addr_last,                              // 调试窗口尾地址
-    output [ADDR2D_WIDTH-1:0] dbg_out_wr_addr2d,           // 调试输出写二维地址
-    output dbg_out_wr_last,                                // 调试输出最后一拍
-    output [ROW_ADDR_WIDTH-1:0] dbg_win_base_row,          // 调试窗口基地址行
-    output [COL_ADDR_WIDTH-1:0] dbg_win_base_col,          // 调试窗口基地址列
-    output [ROW_ADDR_WIDTH-1:0] dbg_win_krow,              // 调试窗口内行偏移
-    output [COL_ADDR_WIDTH-1:0] dbg_win_kcol,              // 调试窗口内列偏移
-    output dbg_rd_pending,                                 // 调试读请求在途
-    output dbg_pix_valid,                                  // 调试像素保持有效
-    output dbg_conv_in_last,                               // 调试卷积输入最后一拍
-    output ofmap_wr_ready,                                 // 6 路缓存同时可写
-    output ofmap_wr_done,                                  // 6 路缓存同时写完一帧
-    output ofmap_frame_valid,                              // 6 路缓存同时帧有效
-    output [LANE_NUM-1:0] lane_ofmap_wr_ready,             // 各路输出缓存写准备好
-    output [LANE_NUM-1:0] lane_ofmap_wr_done,              // 各路输出缓存写完一帧
     output [LANE_NUM-1:0] lane_ofmap_frame_valid,          // 各路输出缓存帧有效
     output signed [LANE_NUM*OUT_WIDTH-1:0] ofmap_rd_data,  // 各路输出缓存读数据
     output [LANE_NUM-1:0] ofmap_rd_valid                   // 各路输出缓存读有效
@@ -104,8 +76,6 @@ module l1_core
     wire buf_frame_valid;
     wire [DATA_WIDTH-1:0] buf_rd_data;
     wire buf_rd_valid;
-    wire [ADDR1D_WIDTH-1:0] dbg_wr_addr1d_unused;
-    wire [ADDR1D_WIDTH-1:0] dbg_rd_addr1d_unused;
 
     wire l1_rd_addr_valid;
     wire l1_rd_addr_ready;
@@ -141,45 +111,17 @@ module l1_core
     wire all_conv_in_ready;
     wire all_lane_out_valid;
     wire any_lane_out_valid;
+    wire any_lane_conv_busy;
     wire all_lane_ofmap_wr_ready;
     wire all_lane_commit_fire;
 
-    assign dbg_img_wr_addr2d = img_addr2d;
-    assign dbg_win_addr2d = l1_rd_addr2d;
-    assign dbg_win_addr_last = l1_rd_addr_last;
-    assign dbg_out_wr_addr2d = l1_wr_addr2d;
-    assign dbg_out_wr_last = l1_wr_last;
-    assign dbg_win_base_row = l1_base_row;
-    assign dbg_win_base_col = l1_base_col;
-    assign dbg_win_krow = l1_krow;
-    assign dbg_win_kcol = l1_kcol;
-    assign dbg_rd_pending = rd_pending;
-    assign dbg_pix_valid = pix_valid_reg;
-    assign dbg_conv_in_last = pix_last_reg;
-
-    assign img_wr_done = buf_wr_done;
     assign img_frame_valid = buf_frame_valid;
-    assign lane_cfg_weight_ready = lane_cfg_weight_ready_vec;
-    assign lane_cfg_weight_done = lane_cfg_weight_done_vec;
-    assign lane_weight_loaded = lane_weight_loaded_vec;
-    assign lane_conv_busy = lane_conv_busy_vec;
-    assign lane_out_valid = lane_out_valid_vec;
-    assign lane_out_data = lane_out_data_bus;
-    assign lane_ofmap_wr_ready = lane_ofmap_wr_ready_vec;
-    assign lane_ofmap_wr_done = lane_ofmap_wr_done_vec;
     assign lane_ofmap_frame_valid = lane_ofmap_frame_valid_vec;
     assign ofmap_rd_data = lane_ofmap_rd_data_bus;
     assign ofmap_rd_valid = lane_ofmap_rd_valid_vec;
 
     assign cfg_weight_ready = cfg_weight_ready_reg;
-    assign cfg_weight_done = |lane_cfg_weight_done_vec;
     assign weight_loaded = &lane_weight_loaded_vec;
-    assign conv_busy = |lane_conv_busy_vec;
-    assign out_valid = all_lane_out_valid;
-    assign out_data = lane_out_data_bus[OUT_WIDTH-1:0];
-    assign ofmap_wr_ready = all_lane_ofmap_wr_ready;
-    assign ofmap_wr_done = &lane_ofmap_wr_done_vec;
-    assign ofmap_frame_valid = &lane_ofmap_frame_valid_vec;
 
     // 只有图像帧有效、6 路权重已装好且各级都空闲时, 才允许启动一次完整扫描
     assign scan_launch_cond = scan_req
@@ -189,7 +131,7 @@ module l1_core
                            && !l1_addr_busy
                            && !rd_pending
                            && !pix_valid_reg
-                           && !conv_busy
+                           && !any_lane_conv_busy
                            && !any_lane_out_valid;
 
     // 只有全部窗口地址发完且读回和 6 路卷积结果都完全清空后, 才认为扫描结束
@@ -198,7 +140,7 @@ module l1_core
                            && !l1_addr_busy
                            && !rd_pending
                            && !pix_valid_reg
-                           && !conv_busy
+                           && !any_lane_conv_busy
                            && !any_lane_out_valid;
 
     assign scan_ready = buf_frame_valid
@@ -208,7 +150,7 @@ module l1_core
                      && !l1_addr_busy
                      && !rd_pending
                      && !pix_valid_reg
-                     && !conv_busy
+                     && !any_lane_conv_busy
                      && !any_lane_out_valid;
 
     assign scan_busy = scan_req
@@ -216,13 +158,14 @@ module l1_core
                     || l1_addr_busy
                     || rd_pending
                     || pix_valid_reg
-                    || conv_busy
+                    || any_lane_conv_busy
                     || any_lane_out_valid;
 
     // 顶层桥接采用单个未完成读请求, 只有 6 路都能同步接收时才继续发新地址
     assign all_conv_in_ready = &lane_in_ready_vec;
     assign all_lane_out_valid = &lane_out_valid_vec;
     assign any_lane_out_valid = |lane_out_valid_vec;
+    assign any_lane_conv_busy = |lane_conv_busy_vec;
     assign all_lane_ofmap_wr_ready = &lane_ofmap_wr_ready_vec;
 
     assign l1_rd_addr_ready = scan_running
@@ -303,12 +246,10 @@ module l1_core
         .wr_done(buf_wr_done),
         .frame_valid(buf_frame_valid),
         .rd_data(buf_rd_data),
-        .rd_valid(buf_rd_valid),
-        .dbg_wr_addr1d(dbg_wr_addr1d_unused),
-        .dbg_rd_addr1d(dbg_rd_addr1d_unused)
+        .rd_valid(buf_rd_valid)
     );
 
-    l1_addr_mgr #(
+    win_addr_mgr #(
         .IMG_W(IMG_W),
         .IMG_H(IMG_H),
         .K(K),
@@ -316,7 +257,7 @@ module l1_core
         .ROW_ADDR_WIDTH(ROW_ADDR_WIDTH),
         .COL_ADDR_WIDTH(COL_ADDR_WIDTH),
         .ADDR2D_WIDTH(ADDR2D_WIDTH)
-    ) u_l1_addr_mgr (
+    ) u_win_addr_mgr (
         .clk(clk),
         .rstn(rstn),
         .start(scan_launch_pulse),
@@ -347,11 +288,6 @@ module l1_core
             wire signed [OUT_WIDTH-1:0] lane_out_data_i;
             wire signed [OUT_WIDTH-1:0] lane_ofmap_rd_data_i;
             wire [ADDR2D_WIDTH-1:0] lane_ofmap_rd_addr2d_i;
-            wire lane_ofmap_wr_bank_sel_unused;
-            wire lane_ofmap_rd_bank_sel_unused;
-            wire lane_ofmap_bank0_valid_unused;
-            wire lane_ofmap_bank1_valid_unused;
-
             assign lane_cfg_weight_valid_i = cfg_weight_valid && cfg_weight_lane_hit[gi];
             assign lane_cfg_weight_last_i = cfg_weight_last && cfg_weight_lane_hit[gi];
             assign lane_in_valid_i = pix_valid_reg && all_conv_in_ready;
@@ -359,12 +295,12 @@ module l1_core
             assign lane_out_data_bus[((gi + 1) * OUT_WIDTH) - 1 -: OUT_WIDTH] = lane_out_data_i;
             assign lane_ofmap_rd_data_bus[((gi + 1) * OUT_WIDTH) - 1 -: OUT_WIDTH] = lane_ofmap_rd_data_i;
 
-            conv_l1 #(
+            conv_core #(
                 .DATA_WIDTH(DATA_WIDTH),
                 .WEIGHT_WIDTH(WEIGHT_WIDTH),
                 .K(K),
                 .OUT_WIDTH(OUT_WIDTH)
-            ) u_conv_l1 (
+            ) u_conv_core (
                 .clk(clk),
                 .rstn(rstn),
                 .cfg_weight_valid(lane_cfg_weight_valid_i),
@@ -406,11 +342,7 @@ module l1_core
                 .wr_done(lane_ofmap_wr_done_vec[gi]),
                 .rd_data(lane_ofmap_rd_data_i),
                 .rd_valid(lane_ofmap_rd_valid_vec[gi]),
-                .rd_frame_valid(lane_ofmap_frame_valid_vec[gi]),
-                .wr_bank_sel(lane_ofmap_wr_bank_sel_unused),
-                .rd_bank_sel(lane_ofmap_rd_bank_sel_unused),
-                .bank0_valid(lane_ofmap_bank0_valid_unused),
-                .bank1_valid(lane_ofmap_bank1_valid_unused)
+                .rd_frame_valid(lane_ofmap_frame_valid_vec[gi])
             );
         end
     endgenerate

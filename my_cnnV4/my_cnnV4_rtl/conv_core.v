@@ -1,11 +1,11 @@
 `timescale 1ns / 1ns
 
-// 第一层单核串行卷积模块
+// 通用单核串行卷积核心模块
 // 1. 上电后先统一装载 1 组 5x5 权重
 // 2. 权重装完之前, 卷积核不接收窗口像素
 // 3. 运行期串行接收 1 个 5x5 窗口的 25 个像素
 // 4. 输出 1 个 32bit 有符号卷积结果
-module conv_l1
+module conv_core
 #(
     parameter DATA_WIDTH   = 8,
     parameter WEIGHT_WIDTH = 8,
