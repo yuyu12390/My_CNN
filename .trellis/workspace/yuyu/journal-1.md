@@ -73,3 +73,37 @@ Integrated the full five-stage my_cnnV4 pipeline, aligned third-layer raw-stream
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: my_cnnV4整网打通并完成收尾上传
+
+**Date**: 2026-05-19
+**Task**: my_cnnV4整网打通并完成收尾上传
+**Branch**: `master`
+
+### Summary
+
+完成my_cnnV4整网CNN集成与正确识别，修复第三层权重顺序对齐问题，补齐PC与RTL交叉验证链路，并修复Trellis归档收尾与中文提交说明约定。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b63fef8` | (see git log) |
+| `9bb0924` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
