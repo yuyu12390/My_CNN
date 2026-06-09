@@ -1,0 +1,4 @@
+top=ref_mul2_int4
+dsp48e1_count=2
+u_mul0
+u_mul1

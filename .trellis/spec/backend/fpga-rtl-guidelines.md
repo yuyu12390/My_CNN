@@ -259,6 +259,227 @@ conv_l1     u_conv_l3_slice (...);
 
 ---
 
+## Scenario: FC Layer DSP Baseline And Packing Entry Point
+
+### 1. Scope / Trigger
+- Trigger: `my_cnnV5` will start DSP-packing work from the FC stage first, because the current synthesized network already concentrates its DSP usage in `fc_neuron`.
+
+### 2. Signatures
+- Current FC top: `l5_top_raw`
+- Current neuron core: `fc_neuron`
+- Structural fact from RTL:
+  - `l5_top_raw` instantiates `OUT_NUM = 10` neurons
+  - each `fc_neuron` consumes `LANE_NUM = 6` signed `8bit` inputs per beat
+  - each neuron processes `192` weights in total
+
+### 3. Contracts
+- When investigating DSP packing in FC, keep the public ports and timing contract of `l5_top_raw` unchanged first.
+- The first optimization target is `fc_neuron` internal multiply path only.
+- Weight order, beat order, `in_last`, and final score behavior must remain bit-consistent with the baseline unless an explicit quantization change is being evaluated.
+
+### 4. Validation & Error Matrix
+- Packed / refactored `fc_neuron` changes any of the 10 final FC scores -> functional failure
+- Packed / refactored `fc_neuron` changes weight loading order -> integration failure
+- DSP count changes but FC scores mismatch -> reject optimization result
+- FC score matches baseline but DSP count does not move in the expected direction -> inspect synthesis DSP report before changing higher-level modules
+
+### 5. Good / Base / Bad Cases
+- Good: optimize only `fc_neuron`, preserve `l5_top_raw` behavior, and verify RTL score output equals the PC baseline.
+- Base: the current synthesized CNN uses `50` DSP48E1 in total, and these DSPs are concentrated in the FC stage.
+- Bad: start by modifying `conv_core` or changing top-level FC scheduling before the FC neuron DSP baseline is understood.
+
+### 6. Tests Required
+- Re-run the FC-related RTL / PC score comparison after every `fc_neuron` arithmetic change.
+- Re-run synthesis and record:
+  - total `DSP48E1`
+  - FC-stage DSP delta
+  - LUT / FF delta
+  - timing delta
+- Keep one baseline report and one post-change report for side-by-side comparison.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 一边研究 DSP packing, 一边改 FC 顶层调度和权重顺序
+// 这样一旦结果错了, 很难判断问题来自算术路径还是系统集成
+```
+
+#### Correct
+```verilog
+// 先锁死 l5_top_raw 对外接口和调度
+// 只替换 fc_neuron 内部乘法实现
+// 然后用 PC / RTL 分数对比验证
+```
+
+### Current Project Facts
+
+- `CNN_utilization_synth.rpt` currently reports `50` DSP48E1 in the synthesized network.
+- `CNN.vds` final DSP report lists `50` `fc_neuron | A*B` DSP entries.
+- Because `l5_top_raw` instantiates `10` identical `fc_neuron` blocks, the current FC baseline is treated as:
+  - `5 DSP` per `fc_neuron`
+  - `50 DSP` for the full FC stage
+
+---
+
+## Scenario: V5 FC Packing Formal Integration Uses A Parallel INT4 Branch
+
+### 1. Scope / Trigger
+- Trigger: after the isolated `pack_mul2_sint4`, `fc_lane6_pack_sint4`, and `fc_neuron_pack_sint4` experiments passed, `my_cnnV5` needs a formal FC-layer integration path that preserves the existing 8bit CNN branch.
+
+### 2. Signatures
+- New formal neuron branch:
+  - `fc_neuron_int4_core`
+  - `fc_neuron_int4_ref`
+  - `fc_neuron_int4_pack`
+- New formal L5 branch:
+  - `l5_top_raw_int4_core`
+  - `l5_top_raw_int4_ref`
+  - `l5_top_raw_int4_pack`
+
+### 3. Contracts
+- The new INT4 branch must keep the same public handshake as `l5_top_raw`:
+  - `cfg_weight_valid/cfg_weight_ready/cfg_weight_last`
+  - `start/ready/busy/done`
+  - `src_rd_en/src_rd_addr2d/src_rd_done`
+  - `score_valid/score_data`
+- The 8bit source feature map stream and 8bit FC weight stream are quantized only inside the new INT4 branch.
+- Default quantization for the first formal branch is:
+  - feature input: arithmetic right shift by `INPUT_SHIFT=4`, then saturate to signed INT4
+  - FC weight: arithmetic right shift by `WEIGHT_SHIFT=4`, then saturate to signed INT4
+- The old `l5_top_raw` and old `fc_neuron` remain untouched as the 8bit baseline.
+
+### 4. Validation & Error Matrix
+- `l5_top_raw_int4_ref` and `l5_top_raw_int4_pack` produce different scores under the same stimulus -> packing integration failure
+- `l5_top_raw_int4_ref` matches `pack` but both differ from TB expected INT4 result -> quantization or scheduling bug
+- INT4 branch changes any 8bit baseline module behavior -> layering violation
+- Reusing the experiment modules directly inside `CNN.v` before the formal L5 branch is verified -> forbidden integration order
+
+### 5. Good / Base / Bad Cases
+- Good: keep the 8bit network branch intact, add an INT4 FC branch in parallel, and verify `ref = pack = expected`.
+- Base: `fc_neuron_int4_core` reuses the proven lane-level packed datapath and only adds explicit 8bit-to-INT4 quantization plus the existing FC scheduling.
+- Bad: replace `l5_top_raw` in the main CNN before the INT4 branch has a standalone L5-level regression.
+
+### 6. Tests Required
+- Behavioral TB at L5 level that:
+  - instantiates both `l5_top_raw_int4_ref` and `l5_top_raw_int4_pack`
+  - feeds the same 12-channel `4x4` source maps and the same FC weight stream
+  - computes one expected INT4 score set inside the TB
+  - checks `ref`, `pack`, and `expected` all match for all 10 outputs
+- OOC synthesis comparison that records:
+  - `fc_neuron_int4_ref` DSP count
+  - `fc_neuron_int4_pack` DSP count
+  - `l5_top_raw_int4_ref` DSP count
+  - `l5_top_raw_int4_pack` DSP count
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 还没做层级联调, 就直接把 CNN.v 里的 l5_top_raw 换掉
+// 这样一旦结果错了, 无法分辨是量化问题, 还是打包实现问题, 还是整网集成问题
+```
+
+#### Correct
+```verilog
+// 先保留旧的 8bit l5_top_raw
+// 新增 l5_top_raw_int4_ref / l5_top_raw_int4_pack
+// 先在 L5 级别做 ref / pack / expected 三方一致性回归
+```
+- This also means the current `6-lane` FC neuron is **not** mapping to `6 DSP` per neuron. One lane-equivalent multiply is currently being absorbed or reimplemented outside the obvious one-multiply-per-DSP expectation, so baseline auditing must happen before packing claims are made.
+
+### Recommended Optimization Order
+
+1. Keep `l5_top_raw` unchanged.
+2. Audit `fc_neuron` first and treat `5 DSP / neuron` as the baseline.
+3. Build a small packed-multiply experiment in the V5 sandbox before touching the full FC neuron.
+4. Only after the packed arithmetic matches baseline scores should it be integrated back into `fc_neuron`.
+
+---
+
+## Design Decision: FC DSP Packing Must Be Split Into Baseline-Forcing And Packing Experiment
+
+**Context**: The current V4/V5 CNN already classifies correctly, and the user wants to start DSP-packing work from the FC layer because FC is the only stage that already consumes a visible number of DSPs in synthesis.
+
+**Problem**:
+- `fc_neuron` code structure is `6` signed `8x8` multiplies per beat.
+- Current synthesis result is only `5 DSP / neuron`, not the naive `6 DSP / neuron`.
+- This means Vivado is restructuring the arithmetic internally, so if we jump directly into packing we lose the ability to tell whether score mismatches come from packing math or from the original DSP mapping changing under us.
+
+**Decision**: FC optimization work must happen in two stages.
+
+### Stage A: Baseline-Forcing Stage
+
+**Goal**: Make the FC neuron DSP usage deterministic first.
+
+**Required edits**:
+- Keep `l5_top_raw` public interface unchanged.
+- Keep FC weight load order unchanged.
+- Keep FC input beat order unchanged.
+- Replace the inferred multiply expressions inside `fc_neuron` with explicit DSP48E1-backed signed multiply wrappers.
+- Leave the 6-lane adder tree in logic first.
+
+**Expected result**:
+- Functional score output must stay bit-identical to the current FC baseline.
+- DSP usage should move from the current `5 DSP / neuron` toward the structural `6 DSP / neuron`.
+- For `10` neurons, the FC-stage expectation becomes approximately `60 DSP`.
+
+### Stage B: Packing Experiment Stage
+
+**Goal**: Explore whether multiple low-bit multiplies can be packed into fewer DSPs.
+
+**Required boundary**:
+- This stage starts in the V5 sandbox experiment area first, not directly in the CNN mainline.
+- Do not replace the production `fc_neuron` with a packed arithmetic core until score agreement and synthesis behavior are both understood.
+
+**Why**:
+- Exact signed `INT8` multi-multiply packing into one `DSP48E1` is not a trivial drop-in replacement.
+- The current `pack_mul2_int4` experiment proves the resource idea, but it does not yet prove a drop-in path for the production FC neuron.
+- The production CNN and the packing experiment must stay separable until arithmetic equivalence or acceptable quantization loss is explicitly verified.
+
+### First Signed Experiment Rule
+
+- The first FC-oriented packing experiment should not start from full signed `INT8`.
+- Start with a signed `INT4` experiment that mirrors FC arithmetic structure more closely:
+  - baseline: `2` signed `INT4` multiplies -> `2 DSP`
+  - packed: convert each operand to `sign + magnitude`, pack the `2` magnitude multiplies into `1 DSP`, then restore each product sign separately in logic
+- This keeps the experiment exact, small, and easy to exhaustively verify before moving toward neuron-level packing.
+
+### Second FC-Oriented Experiment Rule
+
+- After the `2-lane` signed `INT4` experiment is proven, the next step is not full-network integration.
+- Build a `6-lane` single-beat FC datapath experiment that matches one FC neuron beat structurally:
+  - reference path: `3 x ref_mul2_sint4` -> `6 DSP`
+  - packed path: `3 x pack_mul2_sint4` -> `3 DSP`
+  - both paths must produce the same signed sum of 6 products
+- This isolates the exact FC packing leverage before any weight quantization or control-path integration work starts.
+
+### Good Pattern
+
+```verilog
+// Stage A: 先强制单路乘法进 DSP
+// 6 路乘法仍然是 6 路, 只是把乘法映射方式固定住
+// 顶层时序、权重顺序、输入顺序全部不动
+```
+
+### Wrong Pattern
+
+```verilog
+// 还没固定 baseline, 就直接把 fc_neuron 改成 packed 版本
+// 一旦结果错了, 无法判断是 packing 公式错还是原始 DSP 映射变了
+```
+
+### Tests Required
+
+- Stage A:
+  - Re-run FC RTL / PC score comparison and require all 10 scores bit-match baseline.
+  - Re-run synthesis and record DSP delta from `50` to the new FC-stage count.
+- Stage B:
+  - Keep the small packed multiplier as an isolated synthesis target first.
+  - For the first signed experiment, run exhaustive simulation across all signed `INT4` input combinations and require zero mismatches.
+  - For the second FC-oriented experiment, compare the `6-lane` packed datapath against the `6-lane` reference datapath and require zero mismatches on the sampled integration set.
+  - Only after arithmetic verification passes may it be integrated into a neuron-level experiment.
+
+---
+
 ## Scenario: Layer-Boundary Ping-Pong Ownership
 
 ### 1. Scope / Trigger
@@ -3035,4 +3256,539 @@ endtask
 task send_image;
     integer img_idx;
 endtask
+```
+
+---
+
+## Scenario: Third-Layer Weight Translator Must Be Pipelined Before Fanout
+
+### 1. Scope / Trigger
+- Trigger: routed timing for `my_cnnV4` at `50MHz` showed the worst setup path inside `l3_top`, from `u_wgt_dist_global` state registers into third-layer weight-routing control and then into many downstream convolution-slice weight enables.
+
+### 2. Signatures
+- Source stage:
+  - `gw_weight_valid`
+  - `gw_weight_data`
+  - `gw_weight_idx`
+  - `gw_weight_dst2d`
+- Translator outputs:
+  - `l3_cfg_weight_out`
+  - `l3_cfg_weight_cin`
+  - `l3_cfg_weight_last`
+  - `l3_cfg_weight_valid`
+- Recommended pipeline registers:
+  - `l3_weight_pipe_valid_reg`
+  - `l3_weight_pipe_data_reg`
+  - `l3_weight_pipe_out_reg`
+  - `l3_weight_pipe_cin_reg`
+  - `l3_weight_pipe_last_reg`
+
+### 3. Contracts
+- Third-layer raw-weight translation must not remain one long combinational path from `wgt_dist_global` directly into `l3_core` / `l3_out_core` / `conv_core` fanout.
+- At least one local register stage in `l3_top` must buffer translated weight-routing fields before they fan out to the `12 x 6` downstream slice network.
+- The translator-side upstream ready must be derived from the local pipeline slot, not directly from the fully expanded downstream weight-enable tree.
+- If timing still fails after one buffer stage and the endpoint moves onto the new local pipeline registers, the next optimization target is the translation arithmetic itself, especially constant multiply/divide/modulo logic.
+
+### 4. Validation & Error Matrix
+- direct `gw_* -> l3_core` combinational fanout remains -> routed setup path can land on deep `conv_core weight_mem_reg[*]/CE` endpoints with large net delay
+- add one local pipeline stage and worst path moves to `l3_weight_pipe_*_reg/D` -> fanout cut succeeded, remaining issue is translator arithmetic depth
+- add local buffering but leave upstream ready chained through the full downstream tree -> limited benefit, route delay may remain dominant
+- replace one timing bottleneck with a new stale ordering bug -> preload sequence no longer matches PC / RTL golden order
+
+### 5. Good/Base/Bad Cases
+- Good: `l3_top` accepts translated raw weight info into local regs, then `l3_core` consumes from those regs on the next cycle.
+- Base: one extra preload cycle is acceptable because third-layer weight loading is an offline pre-run phase.
+- Bad: a third-layer translator computes raw-stream remap and drives all downstream slice enables in the same cycle.
+
+### 6. Tests Required
+- Re-run routed timing after adding the local translator pipeline and confirm:
+  - WNS improves materially versus the unbuffered version
+  - failing endpoints collapse significantly
+  - the worst path endpoint moves from downstream `conv_core weight_mem_reg[*]` controls toward the new local pipe registers if translation arithmetic is now the next bottleneck
+- Re-run existing `l3_top_tb` / whole-CNN regression and confirm weight order and final scores remain unchanged.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+assign l3_cfg_weight_valid = gw_weight_valid && gw_is_l3_target;
+assign l3_cfg_weight_last  = gw_weight_valid && gw_is_l3_target && l3_cfg_weight_last_sel_reg;
+assign l3_cfg_weight_out   = l3_cfg_weight_out_reg;
+assign l3_cfg_weight_cin   = l3_cfg_weight_cin_reg;
+```
+
+#### Correct
+```verilog
+assign l3_pipe_accept = !l3_weight_pipe_valid_reg || l3_cfg_weight_ready;
+assign gw_weight_ready = !gw_is_l3_target || l3_pipe_accept;
+
+assign l3_cfg_weight_valid = l3_weight_pipe_valid_reg;
+assign l3_cfg_weight_out   = l3_weight_pipe_out_reg;
+assign l3_cfg_weight_cin   = l3_weight_pipe_cin_reg;
+assign l3_cfg_weight_last  = l3_weight_pipe_last_reg;
+```
+
+---
+
+## Scenario: Third-Layer Raw Weight Translation Should Use Local Counters Instead Of Divide/Modulo
+
+### 1. Scope / Trigger
+- Trigger: after one preload-side pipeline cut was added in `l3_top`, routed timing at `50MHz` still failed on the local translation path from `l3_weight_decode_*` into `l3_weight_pipe_*`, with the endpoint already moved onto the local pipe registers.
+
+### 2. Signatures
+- Global preload input context:
+  - `gw_weight_valid`
+  - `gw_weight_data`
+  - `gw_weight_dst2d`
+- Local translator state:
+  - `l3_route_cin_reg`
+  - `l3_route_out_reg`
+  - `l3_route_tap_reg`
+- Local translated outputs:
+  - `l3_weight_pipe_out_reg`
+  - `l3_weight_pipe_cin_reg`
+  - `l3_weight_pipe_last_reg`
+
+### 3. Contracts
+- For the current V4 third-layer preload contract, `l3_top` must assume the raw stream order is fixed:
+  - `cin-major -> out 0..11 -> tap 0..24`
+- When this order is fixed and already validated against `my_cnnV1`, `l3_top` must not reconstruct `cfg_weight_cin` / `cfg_weight_out` / `cfg_weight_last` through runtime `*`, `/`, or `%` arithmetic on `kernel_id` and `weight_idx`.
+- Instead, `l3_top` should advance local counters only on accepted local decode-to-pipe transfers.
+- Counter advance must remain handshake-owned:
+  - if decode beat is not accepted into the local pipe stage, local route counters must not advance
+  - non-third-layer global beats may still be skipped locally without affecting the third-layer route counters
+
+### 4. Validation & Error Matrix
+- keep `kernel_id * 150`, `% 300`, `/ 25` style translation in one combinational block -> timing hotspot remains inside `l3_top`, often with large carry-chain depth
+- local counters advance on `gw_weight_valid` instead of local accept -> preload order can drift under backpressure
+- local counters reset or wrap at the wrong boundary -> one logical output kernel may receive another kernel's slice weights
+- local counter translation matches the accepted raw stream order -> preload behavior stays stable while timing depth drops materially
+
+### 5. Good/Base/Bad Cases
+- Good: `l3_top` buffers one accepted third-layer beat, sends current `cin/out/tap` route tags to the pipe stage, then advances counters for the next accepted beat.
+- Base: one more cycle of preload latency is acceptable because all third-layer weights are loaded before run phase begins.
+- Bad: `l3_top` uses arithmetic reconstruction from `gw_kernel_id` and `gw_weight_idx` every cycle even after timing reports show that translator arithmetic is the remaining bottleneck.
+
+### 6. Tests Required
+- Re-run routed timing after replacing arithmetic translation with local counters and confirm:
+  - the previous `l3_weight_decode_* -> l3_weight_pipe_*` worst path improves
+  - logic level count on the worst remaining path drops materially
+- Re-run at least:
+  - `l3_top_tb`
+  - whole-CNN regression / score check
+- Confirm the third-layer preload order still matches the validated PC/RTL expectation.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+l3_raw_weight_idx_int = (l3_weight_decode_kernel_reg * L1_WEIGHT_NUM) + l3_weight_decode_idx_reg;
+l3_raw_block_idx_int = l3_raw_weight_idx_int % (L1_KERNEL_NUM * L0_WEIGHT_NUM);
+l3_raw_group_idx_int = l3_raw_block_idx_int / (L0_KERNEL_NUM * L0_WEIGHT_NUM);
+l3_raw_lane_idx_int = (l3_raw_block_idx_int % (L0_KERNEL_NUM * L0_WEIGHT_NUM)) / L0_WEIGHT_NUM;
+l3_raw_tap_idx_int = l3_raw_block_idx_int % L0_WEIGHT_NUM;
+```
+
+#### Correct
+```verilog
+if(l3_weight_decode_valid_reg && l3_pipe_accept)
+begin
+    l3_weight_pipe_out_reg <= l3_route_out_reg;
+    l3_weight_pipe_cin_reg <= l3_route_cin_reg;
+    l3_weight_pipe_last_reg <= (l3_route_tap_reg == (L0_WEIGHT_NUM - 1));
+
+    if(l3_route_tap_reg == (L0_WEIGHT_NUM - 1))
+    begin
+        l3_route_tap_reg <= '0;
+        if(l3_route_out_reg == (OUT_NUM - 1))
+        begin
+            l3_route_out_reg <= '0;
+            l3_route_cin_reg <= (l3_route_cin_reg == (SRC_NUM - 1)) ? '0
+                                                                     : (l3_route_cin_reg + 1'b1);
+        end
+        else
+        begin
+            l3_route_out_reg <= l3_route_out_reg + 1'b1;
+        end
+    end
+    else
+    begin
+        l3_route_tap_reg <= l3_route_tap_reg + 1'b1;
+    end
+end
+```
+
+---
+
+## Scenario: Low-Bit Serial Convolution May Stay In LUTs While Parallel FC Uses DSPs
+
+### 1. Scope / Trigger
+- Trigger: after `my_cnnV4` reached `50MHz`, synthesis showed only `50` DSP48E1 blocks used, while most convolution logic still consumed LUT / CARRY resources.
+
+### 2. Signatures
+- Current convolution core:
+  - `conv_core`
+  - one serial multiply-accumulate per accepted pixel
+- Current FC core:
+  - `fc_neuron`
+  - multiple same-cycle lane multiplies inside one combinational sum
+
+### 3. Contracts
+- Do not assume every `a * b` in RTL will automatically map into DSP48.
+- In this project, the current `conv_core` style is a low-bit, single-lane, serial MAC:
+  - one 8-bit pixel
+  - one 8-bit weight
+  - one multiply result added into a fabric accumulator
+- Vivado may keep this style in LUT/CARRY fabric because:
+  - operand width is small
+  - only one multiply is active per core per cycle
+  - the arithmetic is wrapped inside surrounding fabric accumulation/control
+- In contrast, `fc_neuron` performs several same-cycle lane multiplies and is much more likely to infer DSP48 blocks.
+- Asynchronous-reset datapath registers reduce DSP register merging opportunities, because DSP48 internal pipeline registers prefer synchronous-reset or no-reset style.
+
+### 4. Validation & Error Matrix
+- RTL contains small serial multiply only -> DSP usage can remain low even though arithmetic exists
+- RTL contains parallel lane multiplies in one cycle -> DSP inference becomes much more likely
+- datapath source regs use asynchronous reset -> methodology report may warn that DSP input pipelining / register merging is blocked
+- designer interprets low DSP count as synthesis failure -> wrong conclusion; it may simply reflect current micro-architecture and inference heuristics
+
+### 5. Good/Base/Bad Cases
+- Good: treat DSP count as an architecture outcome first, not a pass/fail metric by itself.
+- Base: current V4 can meet timing with LUT-based serial convolution and DSP-based FC.
+- Bad: chase higher DSP count blindly before deciding whether the real bottleneck is LUT pressure, throughput, or timing margin.
+
+### 6. Tests Required
+- Check synthesis utilization and confirm whether DSPs are concentrated in `fc_neuron` / `l5_top_raw`.
+- Check methodology / DRC reports for DSP messages about:
+  - unpipelined DSP inputs
+  - asynchronous-reset registers preventing DSP register merging
+- When converting `conv_core` to DSP-first style later, rerun:
+  - utilization
+  - timing summary
+  - at least one conv regression and whole-CNN score regression
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 只要写了乘法, 综合一定会自动吃 DSP
+assign mult_term = in_data_ext * cur_weight;
+```
+
+#### Correct
+```verilog
+// DSP 是否被用上, 取决于并行度、位宽、流水级和复位风格
+// 当前串行 conv_core 可能留在 LUT/CARRY
+// 当前并行 fc_neuron 更容易推成 DSP48
+```
+
+---
+
+## Scenario: DSP-Packing Must Be Demonstrated On A DSP-Hungry Baseline, Not On The Current Serial Conv Core
+
+### 1. Scope / Trigger
+- Trigger: the project already completed the first supervisor task by removing window-internal parallelism and moving to input/output-dimension parallelism, but a second task requires a visible DSP-packing demonstration inspired by the paper `DSP-Packing: Squeezing Low-precision Arithmetic into FPGA DSP Blocks`.
+
+### 2. Signatures
+- Current baseline modules:
+  - `conv_core`
+  - `fc_neuron`
+- Candidate demonstration modules:
+  - packed / unpacked low-bit convolution micro-kernel
+  - packed / unpacked low-bit FC micro-kernel
+
+### 3. Contracts
+- Do not try to justify DSP-packing on the current serial `conv_core` alone.
+- The current `conv_core` performs only one small multiply per cycle, so it does not create enough DSP pressure to make packing visually meaningful.
+- A DSP-packing experiment in this project should be built as a paired comparison:
+  - **baseline A**: low-bit parallel arithmetic mapped to normal DSP usage
+  - **baseline B**: same arithmetic throughput mapped to packed DSP usage
+- The comparison should preserve:
+  - same mathematical task
+  - same input/output contract
+  - same effective throughput target
+- The main evaluation dimensions should be:
+  - DSP count
+  - LUT / FF count
+  - BRAM count if affected
+  - achieved timing / Fmax
+  - numerical correctness, or bounded error if using approximate overpacking
+
+### 4. Validation & Error Matrix
+- try to demonstrate DSP-packing on a serial low-DSP kernel -> no convincing resource delta, weak thesis evidence
+- compare a packed kernel against a slower or functionally different baseline -> result is not academically fair
+- use approximate overpacking without explicitly stating the error model -> experiment becomes hard to defend
+- first create a DSP-hungry unpacked baseline, then compare against a packed version -> resource benefit becomes visible and explainable
+
+### 5. Good/Base/Bad Cases
+- Good: create a dedicated low-bit parallel MAC kernel whose unpacked version already consumes many DSPs, then show packing reduces DSP usage at similar throughput.
+- Base: keep the existing V4 CNN as the functional system, but build a side experiment module for the DSP-packing study.
+- Bad: force a packing narrative onto the existing serial convolution core even though its DSP usage is naturally low.
+
+### 6. Tests Required
+- For the unpacked baseline and packed version, collect:
+  - synthesis utilization
+  - post-route timing summary
+  - functional simulation logs
+- If the packed version is approximate, add:
+  - absolute error / mean absolute error check
+  - representative vector comparison against PC golden output
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 当前 conv_core DSP 用量不高, 也直接拿它证明 DSP packing
+// 这样通常看不出明显差异
+```
+
+#### Correct
+```verilog
+// 先做一个会明显吃 DSP 的低比特并行 MAC 基线
+// 再做 packed 版本, 对比 DSP/LUT/时序/精度
+// 把 packing 当成“对照实验”, 而不是硬塞进当前串行卷积核
+```
+
+---
+
+## Scenario: Interpret Current V4 DSP Usage By Distinguishing DSP Port Width From Effective Arithmetic Width
+
+### 1. Scope / Trigger
+- Trigger: after a long pause, the developer needs to answer two concrete questions about the current `my_cnnV4` implementation:
+  - overall DSP utilization
+  - how many bits a single inferred DSP is effectively using
+
+### 2. Signatures
+- Reports:
+  - `my_cnnV4.runs/synth_1/CNN_utilization_synth.rpt`
+  - `my_cnnV4.runs/impl_1/CNN_methodology_drc_routed.rpt`
+- Relevant RTL:
+  - `fc_neuron.v`
+  - `conv_core.v`
+
+### 3. Contracts
+- Overall DSP count must be read from utilization reports, not guessed from RTL multiply count.
+- For the current V4 snapshot:
+  - total DSP usage is `50 / 220`
+  - DSP usage is concentrated in `l5_top_raw -> fc_neuron`
+  - current serial `conv_core` is still mostly LUT/CARRY based
+- Do not confuse:
+  - **DSP port width** seen in methodology reports, for example `A[29:0]` and `B[17:0]`
+  - with **effective arithmetic width** coming from the RTL operands
+- In the current `fc_neuron` implementation:
+  - each input sample is sign-extended from `8` bits to `16` bits
+  - each weight is sign-extended from `8` bits to `16` bits
+  - the effective multiply is therefore about `16 x 16`
+  - the accumulation result is held in `32` bits
+- In the current `conv_core` implementation:
+  - the pixel side is effectively `9` bits (`1'b0` + `8`-bit pixel)
+  - the weight side is `8` bits signed
+  - the effective multiply is therefore about `9 x 8`
+
+### 4. Validation & Error Matrix
+- read only DSP port widths from methodology report -> may wrongly conclude the design is fully using all multiplier precision
+- read only RTL operand widths -> may wrongly conclude Vivado must have inferred DSPs for that arithmetic
+- separate report-level DSP port width from RTL effective operand width -> current resource behavior becomes explainable
+
+### 5. Good/Base/Bad Cases
+- Good: answer both “用了多少个 DSP” and “单颗 DSP 实际承载了多宽的数据”.
+- Base: current V4 uses DSP mainly in FC, not in convolution.
+- Bad: state that all convolution multiplies are already充分利用 DSP just because the design contains `*`.
+
+### 6. Tests Required
+- Check `CNN_utilization_synth.rpt` for total DSP count.
+- Check `CNN_methodology_drc_routed.rpt` for inferred DSP port naming and width hints.
+- Cross-check those findings against operand sign extension in `fc_neuron.v` and `conv_core.v`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 报告里出现 A[29:0] / B[17:0], 就说明当前乘法真的吃满了 30x18
+```
+
+#### Correct
+```verilog
+// A[29:0] / B[17:0] 是 DSP 端口宽度
+// 当前 fc_neuron 真正有效参与运算的大约是 16x16
+// 当前 conv_core 真正有效参与运算的大约是 9x8
+```
+
+---
+
+## Convention: Start DSP-Packing Exploration In A V5 Side Directory Instead Of Modifying The Stable V4 System First
+
+**What**: When beginning the dedicated DSP-packing study, create a new experiment workspace at the same hierarchy level as `my_cnnV4`, and start with a minimal RTL-only directory layout under `my_cnnV5/rtl`.
+
+**Why**:
+- `my_cnnV4` already serves as the stable reference implementation for the first supervisor task.
+- DSP-packing exploration changes numeric format, arithmetic structure, and evaluation method; it should not destabilize the validated V4 baseline too early.
+- A side-by-side V5 experiment directory makes it easier to compare unpacked vs packed kernels cleanly.
+
+**Required Initial Layout**:
+```text
+my_cnnV5/
+└── rtl/
+```
+
+**Initial Rule**:
+- First create only the directory skeleton.
+- Do not copy the whole `my_cnnV4` tree into `my_cnnV5` at the start.
+- Add DSP-packing experiment modules incrementally inside `my_cnnV5/rtl`.
+
+**Good Pattern**:
+```text
+my_cnnV4/        # 稳定基线
+my_cnnV5/rtl/    # DSP packing 实验起点
+```
+
+**Wrong Pattern**:
+```text
+my_cnnV5/        # 一开始就整份复制 V4, 混入大量无关文件
+```
+
+---
+
+## Convention: V5 May Keep Two Parallel RTL Roots For Different Purposes
+
+**What**: Under `my_cnnV5`, keep the validated `my_cnnV4` network RTL as one template root, while DSP-packing micro-experiments live in a separate lightweight root.
+
+**Why**:
+- The full CNN accelerator template and the DSP-packing study serve different goals.
+- The template root preserves the already validated V4 architecture for staged V5 evolution.
+- The lightweight experiment root avoids mixing small packing kernels into the main CNN source tree too early.
+
+**Required Layout**:
+```text
+my_cnnV5/
+├── cnn_rtl/   # 从 my_cnnV4_rtl 整体平移过来的模板版网络 RTL
+├── rtl/       # DSP packing 等小型独立实验 RTL
+├── reports/   # 独立实验综合报告
+└── scripts/   # 独立实验脚本
+```
+
+**Contracts**:
+- `cnn_rtl/` is the baseline template root for the next full-network V5 development.
+- `rtl/` is reserved for small self-contained arithmetic experiments such as DSP packing.
+- Do not mix the full CNN files into `rtl/`.
+- Do not point packing experiment scripts at `cnn_rtl/` unless the experiment is intentionally upgraded into the main V5 architecture.
+
+**Good Pattern**:
+```text
+my_cnnV5/cnn_rtl/CNN.v
+my_cnnV5/cnn_rtl/conv_core.v
+my_cnnV5/rtl/ref_mul2_int4.v
+my_cnnV5/rtl/pack_mul2_int4.v
+```
+
+**Wrong Pattern**:
+```text
+my_cnnV5/rtl/CNN.v
+my_cnnV5/rtl/l1_top.v
+my_cnnV5/rtl/l5_top.v
+my_cnnV5/rtl/pack_mul2_int4.v
+```
+
+---
+
+## Convention: DSP-Packing First Bring-Up Starts From Exact 2-Lane Unsigned INT4 Packing
+
+**What**: The first RTL bring-up inside `my_cnnV5/rtl` should start from an exact `2-lane` unsigned `INT4` packing experiment, not from `4-lane`, signed packing, or direct CNN integration.
+
+**Why**:
+- `2-lane` exact packing is the smallest case that still demonstrates the core idea of packing multiple low-bit multiplies into one wider multiply.
+- It is much easier to verify mathematically and in simulation.
+- It gives a stable baseline before attempting more aggressive `4-lane` or approximate overpacking.
+
+**Required First Modules**:
+- `ref_mul2_int4.v`
+  - plain reference implementation
+  - computes `a0*b0` and `a1*b1` directly
+- `pack_mul2_int4.v`
+  - exact packing implementation
+  - packs two unsigned `4bit` lanes into one wider multiply
+
+**Exact Packing Rule For First Bring-Up**:
+- Use unsigned `4bit` inputs first.
+- Use:
+  - `pack_a = a0 + (a1 << 9)`
+  - `pack_b = b0 + (b1 << 9)`
+- Then:
+  - low product is taken from `prod[7:0]`
+  - high product is taken from `prod[25:18]`
+- The `9bit` lane separation is chosen so that the middle cross-term band does not corrupt the high packed result.
+
+**Good Pattern**:
+```verilog
+assign pack_a = {a1, 5'b0, a0};
+assign pack_b = {b1, 5'b0, b0};
+assign prod_full = pack_a * pack_b;
+assign p0 = prod_full[7:0];
+assign p1 = prod_full[25:18];
+```
+
+**Wrong Pattern**:
+```verilog
+// 仅留很小空隙就直接取高位结果
+// 交叉项可能串入高路乘积, 不能作为精确 packing 基线
+assign pack_a = {a1, 4'b0, a0, 4'b0};
+assign pack_b = {b1, 4'b0, b0, 4'b0};
+```
+
+---
+
+## Scenario: DSP-Packing Comparison Should Use DSP48E1 Primitives And Standalone OOC Synthesis
+
+### 1. Scope / Trigger
+- Trigger: a low-bit DSP-packing experiment in `my_cnnV5` showed misleading utilization because Vivado GUI project state and inferred arithmetic did not produce a trustworthy packed-vs-unpacked comparison.
+
+### 2. Signatures
+- Primitive wrapper:
+  - `dsp48e1_mul_u.v`
+  - input: `a`, `b`
+  - output: `p`
+- Baseline top:
+  - `ref_mul2_int4.v`
+- Packed top:
+  - `pack_mul2_int4.v`
+- Batch comparison entry:
+  - `my_cnnV5/scripts/run_compare_synth.tcl`
+
+### 3. Contracts
+- For DSP-packing evaluation, do not rely on plain `*` inference when the goal is to prove DSP occupancy.
+- The arithmetic core used for comparison must instantiate `DSP48E1` directly, so the baseline and packed versions are both pinned onto DSP resources.
+- The baseline and packed versions must be synthesized as two independent out-of-context tops.
+- The comparison script must read:
+  - `dsp48e1_mul_u.v`
+  - `ref_mul2_int4.v`
+  - `pack_mul2_int4.v`
+- Do not trust a GUI `synth_1` report if:
+  - the project top is fixed to only one variant
+  - the other variant is auto-disabled
+  - stale incremental DCPs are still attached
+
+### 4. Validation & Error Matrix
+- use inferred multiply only -> Vivado may optimize the design back into LUT logic, DSP comparison becomes invalid
+- synthesize only one top in GUI -> no packed-vs-unpacked conclusion can be drawn
+- reuse stale incremental checkpoint from another top -> report may complete but comparison is not trustworthy
+- run standalone OOC TCL for both tops -> DSP count becomes directly comparable
+
+### 5. Good/Base/Bad Cases
+- Good: `ref_mul2_int4` uses 2 `DSP48E1`, `pack_mul2_int4` uses 1 `DSP48E1`, both generated by the same standalone TCL flow.
+- Base: keep the GUI project only as a container, but use batch TCL reports as the authoritative packing comparison result.
+- Bad: quote one old GUI utilization report with `DSP=0` as the conclusion of the packing experiment.
+
+### 6. Tests Required
+- Run `my_cnnV5/scripts/run_compare_synth.tcl`.
+- Check `ref_mul2_int4_summary.txt` and assert `dsp48e1_count=2`.
+- Check `pack_mul2_int4_summary.txt` and assert `dsp48e1_count=1`.
+- Check both utilization reports and confirm `DSP48E1 only` matches the summary count.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 只写 a * b, 然后希望 Vivado 自动帮你做成可控的 DSP packing 对照
+assign p = a * b;
+```
+
+#### Correct
+```verilog
+// 对照实验直接例化 DSP48E1 原语
+// 再用独立 OOC TCL 分别综合 baseline 和 packed 两个顶层
+DSP48E1 u_dsp48e1_mul (...);
 ```

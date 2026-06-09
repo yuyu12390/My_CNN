@@ -1,0 +1,8 @@
+top=fc_neuron_int4_ref
+dsp48e1_count=6
+u_fc_neuron_int4_core/g_ref.u_fc_lane6_ref_sint4/u_ref_mul01/u_mul0
+u_fc_neuron_int4_core/g_ref.u_fc_lane6_ref_sint4/u_ref_mul01/u_mul1
+u_fc_neuron_int4_core/g_ref.u_fc_lane6_ref_sint4/u_ref_mul23/u_mul0
+u_fc_neuron_int4_core/g_ref.u_fc_lane6_ref_sint4/u_ref_mul23/u_mul1
+u_fc_neuron_int4_core/g_ref.u_fc_lane6_ref_sint4/u_ref_mul45/u_mul0
+u_fc_neuron_int4_core/g_ref.u_fc_lane6_ref_sint4/u_ref_mul45/u_mul1

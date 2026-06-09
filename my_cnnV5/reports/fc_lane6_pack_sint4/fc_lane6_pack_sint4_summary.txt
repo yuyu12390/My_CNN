@@ -1,0 +1,5 @@
+top=fc_lane6_pack_sint4
+dsp48e1_count=3
+u_pack_mul01/u_pack_mul
+u_pack_mul23/u_pack_mul
+u_pack_mul45/u_pack_mul

@@ -1,0 +1,5 @@
+top=fc_neuron_int4_pack
+dsp48e1_count=3
+u_fc_neuron_int4_core/g_pack.u_fc_lane6_pack_sint4/u_pack_mul01/u_pack_mul
+u_fc_neuron_int4_core/g_pack.u_fc_lane6_pack_sint4/u_pack_mul23/u_pack_mul
+u_fc_neuron_int4_core/g_pack.u_fc_lane6_pack_sint4/u_pack_mul45/u_pack_mul
