@@ -18,6 +18,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
 | [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
 | [FPGA RTL Guidelines](./fpga-rtl-guidelines.md) | RTL buffering and module-boundary conventions | Draft |
+| [FC INT4 DSP Packing](./fc-int4-dsp-packing.md) | How the FC layer was converted to INT4 packed DSP arithmetic while preserving the validated L5/CNN structure | Draft |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 

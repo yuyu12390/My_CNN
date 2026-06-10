@@ -259,6 +259,295 @@ conv_l1     u_conv_l3_slice (...);
 
 ---
 
+## Scenario: Standalone V4 Timing Closure Does Not Guarantee System-Level Timing Closure
+
+### 1. Scope / Trigger
+- Trigger: the standalone `my_cnnV4` accelerator was previously considered timing-clean, but the integrated `cnn_prj` system later showed large routed setup violations after the IP was packaged and inserted into the Zynq block design.
+
+### 2. Signatures
+- Relevant reports / constraints:
+  - standalone accelerator constraint: `my_cnnV4.srcs/constrs_1/new/io.xdc`
+  - integrated system timing report: `cnn_prj.runs/impl_1/system_wrapper_timing_summary_routed.rpt`
+  - packaged IP wrapper path: `mycnn_v1_0_S00_AXI -> cnn_v4_ip_compat -> CNN`
+
+### 3. Contracts
+- A standalone accelerator timing result is only comparable to the integrated system if all of the following match:
+  - same clock period
+  - same top-level wrapper hierarchy
+  - same reset implementation style
+  - same BRAM/DSP inference or IP usage
+  - same placement pressure from surrounding DMA / AXI / PS blocks
+- For this project:
+  - standalone `my_cnnV4` used `create_clock -period 20.000`, which is `50MHz`
+  - integrated `cnn_prj` timing report shows `clk_fpga_0` period `10.000ns`, which is `100MHz`
+  - therefore a “V4 previously closed timing” statement cannot be used as evidence that `cnn_prj` should also close timing
+
+### 4. Validation & Error Matrix
+- Standalone project closes at `50MHz`, integrated system fails at `100MHz` -> expected mismatch, not proof that RTL regressed
+- Worst paths move into wrapped FC neurons under BD integration -> indicates system-level placement/routing and tighter clock target, not necessarily earlier-layer regression
+- Timing report worst path rooted inside `u_l5_top_raw/g_fc_neuron[*].u_fc_neuron/.../weight_mem_reg -> acc_reg_reg` -> treat FC accumulation path as first optimization target
+
+### 5. Good/Base/Bad Cases
+- Good: compare routed timing only after confirming both projects use the same clock period and equivalent top-level context.
+- Base: standalone RTL closes at a looser clock, then requires another timing pass after system integration.
+- Bad: assume a previously closed out-of-context or standalone accelerator must also close after packaging into a PS+DMA+AXI block design.
+
+### 6. Tests Required
+- Before claiming timing regression, inspect:
+  - standalone XDC clock period
+  - integrated system clock summary
+  - worst 10 routed paths
+  - whether the violating paths are inside CNN core or at system interconnect boundaries
+- For this project, record at least:
+  - standalone V4 clock from `io.xdc`
+  - integrated `clk_fpga_0` period from `system_wrapper_timing_summary_routed.rpt`
+  - top violating path startpoint / endpoint / logic levels
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+V4 单独工程之前收敛过
+=
+打成 IP 后放进 cnn_prj 也一定应该收敛
+```
+
+#### Correct
+```text
+V4 单独工程收敛
+只说明该 RTL 在当时那个顶层、那个时钟、那个布局压力下收敛
+
+打成 IP 放进 cnn_prj 后
+必须重新按 system_wrapper 的真实时钟和真实系统互连做 timing signoff
+```
+
+### Evidence Captured
+- `my_cnnV4.srcs/constrs_1/new/io.xdc` contains `create_clock -period 20.000 [get_ports clk]`
+- `cnn_prj.runs/impl_1/system_wrapper_timing_summary_routed.rpt` shows `clk_fpga_0` period `10.000ns`
+- Current worst routed setup path is inside:
+  - `system_i/mycnn_v4_0_0/inst/mycnn_v1_0_S00_AXI_inst/cnn_inst/u_cnn_v4_core/u_l5_top_raw/g_fc_neuron[1].u_fc_neuron/...`
+
+---
+
+## Convention: my_cnnV4 Board-Level IP Top Must Preserve The First-Generation my_cnn External Port Shape
+
+**What**: When preparing `my_cnnV4` for board bring-up, the synthesizable IP-facing top must keep the same external port shape as the validated first-generation `my_cnn` IP-style top, even if the internal V4 network implementation has changed significantly.
+
+**Why**:
+- Board integration is the highest-priority validation stage.
+- The first-generation `my_cnn` project already established a usable external integration boundary.
+- Reusing the same port shape minimizes block-design rewiring and reduces board-side bring-up risk.
+- `my_cnnV4` internal architecture can evolve, but board-level glue should remain stable whenever possible.
+
+### Required Port Contract
+
+The `my_cnnV4` IP-facing wrapper top must expose the same port family as the first `my_cnn/my_cnn_rtl/CNN.v` top:
+
+- `clk`
+- `resetn`
+- `start_cnn`
+- image stream:
+  - `image_tvalid`
+  - `image_tready`
+  - `image_tdata[7:0]`
+- convolution weight stream:
+  - `weight_tvalid`
+  - `weight_tready`
+  - `weight_tdata[7:0]`
+- FC weight stream:
+  - `weightfc_tvalid`
+  - `weightfc_tready`
+  - `weightfc_tdata[7:0]`
+- result stream:
+  - `result_tready`
+  - `result_tvalid`
+  - `result_tdata[31:0]`
+- completion / debug:
+  - `cnn_done`
+  - `conv_cnt[3:0]`
+
+### Required Integration Rule
+
+- For this project, the board/IP packaging top remains `my_cnnV4/my_cnnV4_rtl/CNN.v`.
+- Keep the top module name as `CNN`; do not introduce a renamed wrapper such as `my_cnnV4_ip`.
+- Legacy-compatible ports that no longer have a meaningful internal source may be tied to a safe constant directly in `CNN.v`.
+- The current example is `conv_cnt[3:0]`, which may be held at `4'd0` to preserve first-generation IP compatibility.
+
+### Good Pattern
+
+```verilog
+module CNN
+(
+    input  clk,
+    input  resetn,
+    input  start_cnn,
+    input  image_tvalid,
+    input  signed [7:0] image_tdata,
+    input  weight_tvalid,
+    input  signed [7:0] weight_tdata,
+    input  weightfc_tvalid,
+    input  signed [7:0] weightfc_tdata,
+    input  result_tready,
+    output image_tready,
+    output weight_tready,
+    output weightfc_tready,
+    output reg cnn_done,
+    output result_tvalid,
+    output signed [31:0] result_tdata,
+    output [3:0] conv_cnt
+);
+
+assign conv_cnt = 4'd0;
+```
+
+### Wrong Pattern
+
+- Rename the V4 packaging top away from `CNN` just for IP compatibility.
+- Change the board-level IP port list first and defer top-level compatibility work until later.
+- Delete the old compatibility signal family before board validation is finished.
+
+### Tests Required
+
+- Confirm `my_cnnV4/my_cnnV4_rtl/CNN.v` compiles as the synthesizable top.
+- Confirm the `CNN` port list matches the first-generation `my_cnn` integration port family.
+- Confirm the Vivado project synthesis top is `CNN` before IP packaging.
+
+---
+
+## Scenario: Board Bring-Up Should Keep Compute Core, AXI IP Wrapper, And System Project As Three Separate Layers
+
+### 1. Scope / Trigger
+- Trigger: the project now has three real engineering roots with different responsibilities:
+  - `vivado_prj/.../my_cnnV4` for accelerator RTL development and verification
+  - `mycnn_ip` for AXI-wrapped custom IP packaging
+  - `cnn_prj` for the final system-level block design / board project
+
+### 2. Signatures
+- Compute-core top:
+  - `my_cnnV4/my_cnnV4_rtl/CNN.v`
+- AXI IP wrapper:
+  - `mycnn_ip/hdl/mycnn_v1_0.v`
+  - `mycnn_ip/hdl/mycnn_v1_0_S00_AXI.v`
+- System integration project:
+  - `cnn_prj/...`
+
+### 3. Contracts
+- `my_cnnV4` remains the algorithm / accelerator core layer.
+- Do not push AXI-Lite register logic directly into `my_cnnV4/my_cnnV4_rtl/CNN.v`.
+- `mycnn_ip` is the adaptation layer between software-visible AXI control and the pure CNN accelerator core.
+- `cnn_prj` should consume the packaged IP and should not become the place where accelerator behavior is redefined.
+- The AXI wrapper may adapt sideband behavior that the pure core does not naturally own, for example:
+  - generate `result_tlast`
+  - latch `cnn_done` into a software-readable status bit
+  - convert a software register write into a one-shot `start_cnn` pulse
+
+### 4. Validation & Error Matrix
+- reuse `mycnn_ip` but keep the old level-style `start_cnn = (slv_reg0 == 32'hffffffff)` contract -> the V4 core can restart immediately after returning to `ST_IDLE`
+- expose core `cnn_done` as a one-cycle pulse only -> software polling may miss completion
+- force `result_tlast` into the compute core even though it is only an AXI-stream packaging concern -> unnecessary coupling
+- keep V4 as a pure compute core and solve `start/done/last` semantics in the wrapper -> safest board-integration path
+
+### 5. Good / Base / Bad Cases
+- Good: `my_cnnV4` keeps the validated CNN datapath, `mycnn_ip` is updated to wrap that datapath, and `cnn_prj` only swaps in the refreshed packaged IP.
+- Base: `mycnn_ip` can be reused as the engineering shell, but its wrapper logic must be reviewed against V4 behavior instead of assumed compatible.
+- Bad: directly drop the new V4 `CNN` into the old AXI wrapper without checking `start_cnn`, `cnn_done`, and `result_tlast` semantics.
+
+### 6. Tests Required
+- Verify one AXI write to the start register produces exactly one `start_cnn` pulse into the V4 core.
+- Verify completion remains observable to software until cleared explicitly.
+- Verify the wrapper emits exactly `10` score beats and asserts `result_tlast` only on the last beat.
+- Re-run packaged-IP integration in `cnn_prj` after the wrapper is refreshed.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+assign start_cnn = (slv_reg0 == 32'hffffffff);
+```
+
+#### Correct
+```verilog
+// AXI 写控制寄存器后, 在包装层打一拍启动脉冲
+always @(posedge S_AXI_ACLK) begin
+    if(!S_AXI_ARESETN)
+        start_cnn_pulse <= 1'b0;
+    else
+        start_cnn_pulse <= start_write_hit;
+end
+```
+
+### Current Project Decision
+
+- Continue using `mycnn_ip` as the AXI/IP-packaging project shell.
+- Treat `my_cnnV4` as the accelerator-core source of truth.
+- Refresh the wrapper around V4 rather than rewriting V4 into an AXI-heavy top.
+
+---
+
+## Scenario: Preserve Existing mycnn_ip / cnn_prj External Shape By Adding A Thin CNN Compatibility Wrapper
+
+### 1. Scope / Trigger
+- Trigger: `cnn_prj` already consumes the packaged `mycnn_ip` with existing ports such as `cnn_done`, `conv_cnt`, and `result_tlast`, so changing the IP outward shape would force broad block-design churn.
+
+### 2. Signatures
+- Existing packaged-IP shell:
+  - `mycnn_v1_0.v`
+  - `mycnn_v1_0_S00_AXI.v`
+- Compatibility compute-facing shim:
+  - `mycnn_ip/src/CNN.v`
+- V4 source of truth:
+  - `vivado_prj/my_cnnV4/my_cnnV4_rtl/CNN.v`
+
+### 3. Contracts
+- Keep `mycnn_v1_0` and `mycnn_v1_0_S00_AXI` external port names unchanged so `cnn_prj` can keep using the same packaged IP shape.
+- Do not force `my_cnnV4` compute-core `CNN.v` to absorb legacy-only `result_tlast` behavior.
+- The `mycnn_ip/src/CNN.v` layer may be repurposed into a thin compatibility wrapper that:
+  - accepts the legacy package-facing port list
+  - instantiates the V4 compute core
+  - converts `start_cnn` from a level-style control into a one-shot rising-edge pulse
+  - holds `cnn_done` high after the core pulse until the next start
+  - generates `result_tlast` locally from the known `10`-score result stream
+- When `mycnn_ip` is an import-style Vivado project, update both:
+  - outer source files under `mycnn_ip/src` and `mycnn_ip/hdl`
+  - imported copies under `mycnn_ip/my_cnn_ip/my_cnn_ip.srcs/sources_1/imports/...`
+  or re-import them explicitly before trusting GUI synthesis.
+
+### 4. Validation & Error Matrix
+- patch only outer `src/` files but not the import copies -> Vivado GUI may still compile stale logic
+- push `result_tlast` into the V4 core -> unnecessary coupling to board/IP packaging concerns
+- leave `start_cnn` level-sensitive through the wrapper -> V4 may auto-restart when it returns to idle
+- add a local compatibility wrapper and keep the packaged-IP outward shape stable -> lowest-risk path for `cnn_prj`
+
+### 5. Good / Base / Bad Cases
+- Good: `cnn_prj` keeps the same IP symbol and the same external wires, while `mycnn_ip/src/CNN.v` quietly adapts V4 semantics behind the boundary.
+- Base: a local RAM behavioral replacement inside the compatibility bundle is acceptable for package-level bring-up if it preserves the V4 interface contract.
+- Bad: rewrite `cnn_prj` block-design connectivity just to expose raw V4 ports directly.
+
+### 6. Tests Required
+- Compile the package-level chain at minimum with:
+  - V4 bundle source
+  - compatibility `CNN.v`
+  - `mycnn_v1_0_S00_AXI.v`
+  - `mycnn_v1_0.v`
+- Confirm:
+  - `result_tlast` asserts on the tenth accepted score beat
+  - `cnn_done` remains visible after the internal core pulse
+  - a new `start_cnn` command clears the latched done flag and resets the local beat counter
+- Re-open `mycnn_ip.xpr` and confirm the new compatibility source is part of the active source set.
+
+### 7. Wrong vs Correct
+#### Wrong
+```verilog
+// 直接把 V4 核顶到 mycnn_ip 外口, 结果系统工程被迫跟着改接口
+CNN u_cnn_v4 (... raw V4 ports ...);
+```
+
+#### Correct
+```verilog
+// 保留旧 IP 外形, 在中间补一层轻量兼容
+cnn_v4_ip_compat u_compat (... legacy package-facing ports ...);
+```
+
+---
+
 ## Scenario: FC Layer DSP Baseline And Packing Entry Point
 
 ### 1. Scope / Trigger
